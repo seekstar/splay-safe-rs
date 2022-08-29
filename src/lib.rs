@@ -10,17 +10,6 @@ struct Node<T> {
     key: T,
 }
 
-impl<T: std::default::Default> Default for Node<T> {
-    fn default() -> Node<T> {
-        Node {
-            c: [None, None],
-            cnt: 0,
-            scnt: 0,
-            key: T::default(),
-        }
-    }
-}
-
 impl<T> Node<T> {
     fn new(key: T) -> Node<T> {
         Node {
@@ -110,7 +99,7 @@ pub struct Splay<T> {
     root: Option<Box<Node<T>>>,
 }
 
-impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
+impl<T: std::cmp::Ord> Splay<T> {
     pub fn new() -> Splay<T> {
         Splay { root: None }
     }
@@ -354,7 +343,7 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
     }
 }
 
-impl<T: std::default::Default + std::cmp::Ord + std::fmt::Display> Splay<T> {
+impl<T: std::cmp::Ord + std::fmt::Display> Splay<T> {
     fn __print_subtree_non_empty(&self, rt: &Node<T>, str: &mut String) {
         let ori_len = str.len();
         let node = if rt.cnt == 1 {
