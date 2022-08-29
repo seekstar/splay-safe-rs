@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 #[derive(Clone, PartialEq)]
+#[cfg(feature = "rank")]
 struct Node<T> {
     c: [Option<Box<Node<T>>>; 2],
     // Number of elements in this node
@@ -10,7 +11,17 @@ struct Node<T> {
     key: T,
 }
 
+#[derive(Clone, PartialEq)]
+#[cfg(not(feature = "rank"))]
+struct Node<T> {
+    c: [Option<Box<Node<T>>>; 2],
+    // Number of elements in this node
+    cnt: u32,
+    key: T,
+}
+
 impl<T> Node<T> {
+    #[cfg(feature = "rank")]
     fn new(key: T) -> Node<T> {
         Node {
             c: [None, None],
@@ -19,9 +30,18 @@ impl<T> Node<T> {
             key: key,
         }
     }
+    #[cfg(not(feature = "rank"))]
+    fn new(key: T) -> Node<T> {
+        Node {
+            c: [None, None],
+            cnt: 1,
+            key: key,
+        }
+    }
 }
 
 impl<T> Node<T> {
+    #[cfg(feature = "rank")]
     fn push_up(&mut self) {
         self.scnt = self.cnt;
         if let Some(ref c) = self.c[0] {
@@ -31,6 +51,9 @@ impl<T> Node<T> {
             self.scnt += c.scnt;
         }
     }
+    #[cfg(not(feature = "rank"))]
+    fn push_up(&mut self) {}
+
     // y is the parent of x
     // Will update y.scnt
     // Dirty: x.scnt, x <-> to
@@ -113,6 +136,7 @@ impl<T: std::cmp::Ord> Splay<T> {
         self.root = Some(x);
     }
 
+    #[cfg(feature = "rank")]
     pub fn size(&self) -> u32 {
         match self.root {
             Some(ref root) => root.scnt,
@@ -285,6 +309,7 @@ impl<T: std::cmp::Ord> Splay<T> {
     // If found, then the node will be the root, and return true.
     // If not found, then the last accessed node will be the root, and return
     // false.
+    #[cfg(feature = "rank")]
     fn query_kth_no_ret_val(&mut self, mut k: u32) -> bool {
         let mut next = self.root.take();
         let mut path = Vec::new();
@@ -314,6 +339,7 @@ impl<T: std::cmp::Ord> Splay<T> {
         self.rotate_to_root(x, path);
         return false;
     }
+    #[cfg(feature = "rank")]
     pub fn query_kth(&mut self, k: u32) -> Option<&T> {
         let found = self.query_kth_no_ret_val(k);
         if found {
@@ -323,6 +349,7 @@ impl<T: std::cmp::Ord> Splay<T> {
         }
     }
 
+    #[cfg(feature = "rank")]
     fn check_sanity_subtree(&self, rt: &Box<Node<T>>) {
         let mut scnt = rt.cnt;
         if let Some(ref c) = rt.c[0] {
@@ -336,6 +363,7 @@ impl<T: std::cmp::Ord> Splay<T> {
         assert_eq!(scnt, rt.scnt);
     }
     // Only for DEBUG
+    #[cfg(feature = "rank")]
     pub fn check_sanity(&self) {
         if let Some(ref root) = self.root {
             self.check_sanity_subtree(root);
