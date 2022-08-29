@@ -31,7 +31,7 @@ impl<T> Node<T> {
 }
 
 impl<T> Node<T> {
-	fn push_up(&mut self) {
+    fn push_up(&mut self) {
         self.scnt = self.cnt;
         if let Some(ref c) = self.c[0] {
             self.scnt += c.scnt;
@@ -40,7 +40,7 @@ impl<T> Node<T> {
             self.scnt += c.scnt;
         }
     }
-	// y is the parent of x
+    // y is the parent of x
     // Will update y.scnt
     // Dirty: x.scnt, x <-> to
     fn __rotate_up(
@@ -53,7 +53,7 @@ impl<T> Node<T> {
         y.push_up();
         self.c[!side_x as usize] = Some(y);
     }
-	// Nodes in path will be updated
+    // Nodes in path will be updated
     // Dirty: x.scnt, x <-> path[0]
     fn __splay(
         &mut self, // x
@@ -148,22 +148,20 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         self.rotate_to_root(cur, path);
     }
 
-	fn __lower_bound(&mut self, key: &T) -> (Vec<(Box<Node<T>>, bool)>, usize) {
-		let mut next = self.root.take();
+    fn __lower_bound(&mut self, key: &T) -> (Vec<(Box<Node<T>>, bool)>, usize) {
+        let mut next = self.root.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
         while let Some(mut cur) = next {
             let side = cur.key < *key;
-            if side {
-                next = cur.c[1].take();
-            } else {
+            if !side {
                 ans_depth = path.len() + 1;
-                next = cur.c[0].take();
             }
+            next = cur.c[side as usize].take();
             path.push((cur, side));
         }
-		(path, ans_depth)
-	}
+        (path, ans_depth)
+    }
     // Find the first node whose value >= key
     // If found, then the node will be the root and returned, and return true.
     // Otherwise (all nodes < key), return false.
@@ -193,18 +191,18 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         self.rotate_to_root(ans, path);
         return true;
     }
-	// The remaining smallest will be the root.
+    // The remaining smallest will be the root.
     pub fn del_smaller(&mut self, key: &T) {
         let (mut path, ans_depth) = self.__lower_bound(key);
-		path.truncate(ans_depth);
+        path.truncate(ans_depth);
         let mut ans = match path.pop() {
             Some((ans, _)) => ans,
             None => return,
         };
-		ans.splay(path);
-		ans.c[0] = None;
-		ans.push_up();
-		self.root = Some(ans);
+        ans.splay(path);
+        ans.c[0] = None;
+        ans.push_up();
+        self.root = Some(ans);
     }
 
     // If found, then the node will be the root, and return true.
@@ -227,10 +225,8 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
             let side = lscnt < k;
             if side {
                 k -= lscnt + cur_cnt;
-                next = cur.c[1].take();
-            } else {
-                next = cur.c[0].take();
             };
+            next = cur.c[side as usize].take();
             path.push((cur, side));
         }
         let (x, _) = if let Some(x) = path.pop() {
@@ -262,7 +258,7 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         }
         assert_eq!(scnt, rt.scnt);
     }
-	// Only for DEBUG
+    // Only for DEBUG
     pub fn check_sanity(&self) {
         if let Some(ref root) = self.root {
             self.check_sanity_subtree(root);
