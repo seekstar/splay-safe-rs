@@ -115,6 +115,7 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
             None => 0,
         }
     }
+
     // The new node will be the root
     pub fn insert(&mut self, key: T) {
         let tmp = self.root.take();
@@ -146,11 +147,9 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         }
         self.rotate_to_root(cur, path);
     }
-    // Find the first node whose value >= key
-    // If found, then the node will be the root and returned, and return true.
-    // Otherwise (all nodes < key), return false.
-    pub fn lower_bound(&mut self, key: &T) -> bool {
-        let mut next = self.root.take();
+
+	fn __lower_bound(&mut self, key: &T) -> (Vec<(Box<Node<T>>, bool)>, usize) {
+		let mut next = self.root.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
         while let Some(mut cur) = next {
@@ -163,6 +162,13 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
             }
             path.push((cur, side));
         }
+		(path, ans_depth)
+	}
+    // Find the first node whose value >= key
+    // If found, then the node will be the root and returned, and return true.
+    // Otherwise (all nodes < key), return false.
+    pub fn lower_bound(&mut self, key: &T) -> bool {
+        let (mut path, ans_depth) = self.__lower_bound(key);
         let (mut prev, _) = match path.pop() {
             Some(prev) => prev,
             None => return false,
@@ -187,6 +193,20 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         self.rotate_to_root(ans, path);
         return true;
     }
+	// The remaining smallest will be the root.
+    pub fn del_smaller(&mut self, key: &T) {
+        let (mut path, ans_depth) = self.__lower_bound(key);
+		path.truncate(ans_depth);
+        let mut ans = match path.pop() {
+            Some((ans, _)) => ans,
+            None => return,
+        };
+		ans.splay(path);
+		ans.c[0] = None;
+		ans.push_up();
+		self.root = Some(ans);
+    }
+
     // If found, then the node will be the root, and return true.
     // If not found, then the last accessed node will be the root, and return
     // false.
@@ -228,26 +248,6 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         } else {
             return None;
         }
-    }
-    // The remaining smallest will be the root.
-    pub fn del_smaller(&mut self, key: &T) -> u32 {
-        let found = self.lower_bound(key);
-        if found == false {
-            let deleted = if let Some(root) = self.root.take() {
-                root.scnt
-            } else {
-                0
-            };
-            return deleted;
-        }
-        let root = self.root.as_mut().unwrap();
-        let deleted = if let Some(lc) = root.c[0].take() {
-            root.push_up();
-            lc.scnt
-        } else {
-            0
-        };
-        return deleted;
     }
 
     fn check_sanity_subtree(&self, rt: &Box<Node<T>>) {
