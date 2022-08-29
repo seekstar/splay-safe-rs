@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 #[derive(Clone, PartialEq)]
 struct Node<T> {
     c: [Option<Box<Node<T>>>; 2],
@@ -89,6 +91,19 @@ impl<T> Node<T> {
         self.__splay(path);
         self.push_up();
     }
+    fn find_prev_or_next(
+        &mut self,
+        is_next: bool,
+    ) -> Vec<(Box<Node<T>>, bool)> {
+        let mut path = Vec::new();
+        let mut next = self.c[is_next as usize].take();
+        let side = !is_next;
+        while let Some(mut cur) = next {
+            next = cur.c[side as usize].take();
+            path.push((cur, side));
+        }
+        return path;
+    }
 }
 
 pub struct Splay<T> {
@@ -114,6 +129,28 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
             Some(ref root) => root.scnt,
             None => 0,
         }
+    }
+    pub fn root_key(&self) -> Option<&T> {
+        self.root.as_ref().map(|root| &root.key)
+    }
+    fn take_root(&mut self) -> Option<Box<Node<T>>> {
+        let mut root = match self.root.take() {
+            Some(root) => root,
+            None => return None,
+        };
+        let mut path = root.find_prev_or_next(false);
+        let mut x = match path.pop() {
+            Some((x, _)) => x,
+            None => {
+                self.root = root.c[1].take();
+                return None;
+            }
+        };
+        x.__splay(path);
+        x.c[1] = root.c[1].take();
+        x.push_up();
+        self.root = Some(x);
+        return Some(root);
     }
 
     // The new node will be the root
@@ -148,25 +185,68 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         self.rotate_to_root(cur, path);
     }
 
-    fn __lower_bound(&mut self, key: &T) -> (Vec<(Box<Node<T>>, bool)>, usize) {
+    pub fn find(&mut self, key: &T) -> bool {
+        let mut next = self.root.take();
+        let mut path = Vec::new();
+        while let Some(mut cur) = next {
+            let res = key.cmp(&cur.key);
+            if res == Ordering::Equal {
+                self.rotate_to_root(cur, path);
+                return true;
+            }
+            let side = res == Ordering::Greater;
+            next = cur.c[side as usize].take();
+            path.push((cur, side));
+        }
+        // Not found. Rotate the last accessed node to root to maintain
+        // complexity.
+        let prev = match path.pop() {
+            Some((prev, _)) => prev,
+            None => return false,
+        };
+        self.rotate_to_root(prev, path);
+        return false;
+    }
+    pub fn delete(&mut self, key: &T) -> bool {
+        let ret = self.find(key);
+        if ret {
+            self.take_root();
+        }
+        return ret;
+    }
+
+    /// # Arguments
+    /// * ge
+    /// 	- false: Find the first node whose value <= key.
+    /// 	- true: Find the first node whose value >= key.
+    fn __find_first_le_or_ge(
+        &mut self,
+        key: &T,
+        ge: bool,
+    ) -> (Vec<(Box<Node<T>>, bool)>, usize) {
         let mut next = self.root.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
         while let Some(mut cur) = next {
-            let side = cur.key < *key;
-            if !side {
-                ans_depth = path.len() + 1;
+            let res = cur.key.cmp(key);
+            if res == Ordering::Equal {
+                path.push((cur, false));
+                ans_depth = path.len();
+                return (path, ans_depth);
             }
+            let side = res == Ordering::Less;
             next = cur.c[side as usize].take();
             path.push((cur, side));
+            if side != ge {
+                ans_depth = path.len();
+            }
         }
         (path, ans_depth)
     }
-    // Find the first node whose value >= key
-    // If found, then the node will be the root and returned, and return true.
-    // Otherwise (all nodes < key), return false.
-    pub fn lower_bound(&mut self, key: &T) -> bool {
-        let (mut path, ans_depth) = self.__lower_bound(key);
+    // If found, then the node will be the root, and return true.
+    // Otherwise return false.
+    fn find_first_le_or_ge(&mut self, key: &T, ge: bool) -> bool {
+        let (mut path, ans_depth) = self.__find_first_le_or_ge(key, ge);
         let (mut prev, _) = match path.pop() {
             Some(prev) => prev,
             None => return false,
@@ -191,15 +271,23 @@ impl<T: std::default::Default + std::cmp::Ord> Splay<T> {
         self.rotate_to_root(ans, path);
         return true;
     }
+    pub fn find_first_le(&mut self, key: &T) -> bool {
+        self.find_first_le_or_ge(key, false)
+    }
+    // find_first_ge
+    pub fn lower_bound(&mut self, key: &T) -> bool {
+        return self.find_first_le_or_ge(key, true);
+    }
+
     // The remaining smallest will be the root.
     pub fn del_smaller(&mut self, key: &T) {
-        let (mut path, ans_depth) = self.__lower_bound(key);
+        let (mut path, ans_depth) = self.__find_first_le_or_ge(key, true);
         path.truncate(ans_depth);
         let mut ans = match path.pop() {
             Some((ans, _)) => ans,
             None => return,
         };
-        ans.splay(path);
+        ans.__splay(path);
         ans.c[0] = None;
         ans.push_up();
         self.root = Some(ans);
