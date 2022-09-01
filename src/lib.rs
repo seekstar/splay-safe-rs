@@ -1,4 +1,3 @@
-use num_traits::One;
 use num_traits::Zero;
 
 use std::ops::Add;
@@ -7,15 +6,16 @@ use std::{cmp::Ordering, ops::AddAssign};
 
 pub trait BasicOps {
     type KeyType;
-    type CountType;
-    fn new(key: Self::KeyType) -> Self;
     fn key(&self) -> &Self::KeyType;
-    fn cnt(&self) -> &Self::CountType;
-    fn cnt_mut(&mut self) -> &mut Self::CountType;
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>);
 }
 
-pub trait SubtreeCount {
+pub trait Count {
+    type CountType;
+    fn cnt(&self) -> &Self::CountType;
+}
+
+pub trait SubtreeCount: Count {
     type SubtreeCountType;
     fn subtree_count(&self) -> &Self::SubtreeCountType;
 }
@@ -119,29 +119,182 @@ impl<T: BasicOps> Node<T> {
     }
 }
 
-pub struct SplayGeneric<T> {
-    root: Option<Box<Node<T>>>,
+struct Interval<'a, T> {
+    rt: &'a mut Option<Box<Node<T>>>,
 }
 
-impl<T> SplayGeneric<T> {
-    // use Basic::C as CT;
-    pub fn new() -> SplayGeneric<T> {
-        SplayGeneric { root: None }
+impl<'a, T> From<&'a mut Option<Box<Node<T>>>> for Interval<'a, T> {
+    fn from(rt: &'a mut Option<Box<Node<T>>>) -> Interval<'a, T> {
+        Interval { rt }
     }
 }
 
-impl<T: BasicOps> SplayGeneric<T> {
+impl<'a, T: BasicOps> Interval<'a, T> {
+    fn root_data(self) -> Option<&'a T> {
+        self.rt.as_ref().map(|x| &x.d)
+    }
     fn rotate_to_root(
         &mut self,
         mut x: Box<Node<T>>,
         path: Vec<(Box<Node<T>>, bool)>,
     ) {
         x.splay(path);
-        self.root = Some(x);
+        *self.rt = Some(x);
+    }
+    /// # Arguments
+    /// * ge
+    /// 	- false: Find the first node whose value <= key.
+    /// 	- true: Find the first node whose value >= key.
+    fn __find_first_le_or_ge(
+        &mut self,
+        key: &T::KeyType,
+        ge: bool,
+    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
+    where
+        T::KeyType: Ord,
+    {
+        let mut next = self.rt.take();
+        let mut path = Vec::new();
+        let mut ans_depth = 0;
+        while let Some(mut cur) = next {
+            let res = cur.d.key().cmp(key);
+            if res == Ordering::Equal {
+                path.push((cur, false));
+                ans_depth = path.len();
+                return (path, ans_depth);
+            }
+            let side = res == Ordering::Less;
+            next = cur.c[side as usize].take();
+            path.push((cur, side));
+            if side != ge {
+                ans_depth = path.len();
+            }
+        }
+        (path, ans_depth)
+    }
+    // If found, then the node will be the root, and return true.
+    // Otherwise return false.
+    fn find_first_le_or_ge(&mut self, key: &T::KeyType, ge: bool) -> bool
+    where
+        T::KeyType: Ord,
+    {
+        let (mut path, ans_depth) = self.__find_first_le_or_ge(key, ge);
+        let (mut prev, _) = match path.pop() {
+            Some(prev) => prev,
+            None => return false,
+        };
+        let ans = if ans_depth <= path.len() {
+            // prev != ans
+            prev.splay(path.split_off(ans_depth));
+            let (mut ans, side) = match path.pop() {
+                Some(ans) => ans,
+                None => {
+                    *self.rt = Some(prev);
+                    return false;
+                }
+            };
+            ans.c[side as usize] = Some(prev);
+            // ans.scnt will be updated by rotate_to_root later.
+            ans
+        } else {
+            // prev is ans
+            prev
+        };
+        self.rotate_to_root(ans, path);
+        return true;
+    }
+    fn find_first_le(&mut self, key: &T::KeyType) -> bool
+    where
+        T::KeyType: Ord,
+    {
+        self.find_first_le_or_ge(key, false)
+    }
+    fn find_first_ge(&mut self, key: &T::KeyType) -> bool
+    where
+        T::KeyType: Ord,
+    {
+        self.find_first_le_or_ge(key, true)
+    }
+}
+
+impl<'a, T: BasicOps + SubtreeCount> Interval<'a, T> {
+    fn find_kth(&mut self, mut k: T::SubtreeCountType) -> bool
+    where
+        T::CountType: Copy,
+        T::SubtreeCountType: Ord
+            + Copy
+            + Zero
+            + Add<T::CountType, Output = T::SubtreeCountType>
+            + SubAssign,
+    {
+        let mut next = self.rt.take();
+        let mut path = Vec::new();
+        while let Some(mut cur) = next {
+            let lscnt = if let Some(ref lc) = cur.c[0] {
+                *lc.d.subtree_count()
+            } else {
+                T::SubtreeCountType::zero()
+            };
+            let cur_cnt = *cur.d.cnt();
+            if &lscnt < &k && &(lscnt + cur_cnt) >= &k {
+                self.rotate_to_root(cur, path);
+                return true;
+            }
+            let side = lscnt < k;
+            if side {
+                k -= lscnt + cur_cnt;
+            };
+            next = cur.c[side as usize].take();
+            path.push((cur, side));
+        }
+        let (x, _) = if let Some(x) = path.pop() {
+            x
+        } else {
+            return false;
+        };
+        self.rotate_to_root(x, path);
+        return false;
+    }
+}
+
+pub struct Splay<T> {
+    root: Option<Box<Node<T>>>,
+}
+
+impl<T> Splay<T> {
+    // use Basic::C as CT;
+    pub fn new() -> Splay<T> {
+        Splay { root: None }
+    }
+}
+
+impl<T: BasicOps> Splay<T> {
+    fn to_interval(&mut self) -> Interval<T> {
+        Interval { rt: &mut self.root }
+    }
+    fn rotate_to_root(
+        &mut self,
+        x: Box<Node<T>>,
+        path: Vec<(Box<Node<T>>, bool)>,
+    ) {
+        self.to_interval().rotate_to_root(x, path);
     }
 
     pub fn root_data(&self) -> Option<&T> {
         self.root.as_ref().map(|root| &root.d)
+    }
+    // Return updated or not
+    pub fn update_root_data<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&mut T),
+    {
+        let root = match self.root.as_mut() {
+            Some(root) => root,
+            None => return false,
+        };
+        f(&mut root.d);
+        root.push_up();
+        return true;
     }
     fn take_root(&mut self) -> Option<Box<Node<T>>> {
         let mut root = match self.root.take() {
@@ -163,40 +316,59 @@ impl<T: BasicOps> SplayGeneric<T> {
         return Some(root);
     }
 
-    // The new node will be the root
-    pub fn insert(&mut self, key: T::KeyType)
+    // If the key does not already exist, then return the path to the insert
+    // location.
+    // If the key already exists, then return None. The existing key will be
+    // the root.
+    fn find_insert_location(
+        &mut self,
+        key: &T::KeyType,
+    ) -> Option<Vec<(Box<Node<T>>, bool)>>
     where
         T::KeyType: Ord,
-        T::CountType: AddAssign + One,
     {
-        let tmp = self.root.take();
-        let mut cur = match tmp {
+        let mut path = Vec::new();
+        let mut cur = match self.root.take() {
             Some(root) => root,
             None => {
-                self.root = Some(Box::new(Node::new(T::new(key))));
-                return;
+                return Some(path);
             }
         };
-        let mut path = Vec::new();
         loop {
-            if *cur.d.key() == key {
-                *cur.d.cnt_mut() += T::CountType::one();
-                // cur.scnt will be updated by subsequent rotate_to_root
-                break;
+            if *cur.d.key() == *key {
+                self.rotate_to_root(cur, path);
+                return None;
             }
-            let side = cur.d.key() < &key;
+            let side = cur.d.key() < key;
             let next = cur.c[side as usize].take();
             path.push((cur, side));
             if let Some(nex) = next {
                 cur = nex
             } else {
-                cur = Box::new(Node::new(T::new(key)));
-                // cur <-> prev, cur.scnt and prev.scnt will be updated by
-                // subsequent rotate_to_root
-                break;
+                return Some(path);
             }
         }
-        self.rotate_to_root(cur, path);
+    }
+    // If the key already exists, then make it the root and return false.
+    // Otherwise, construct the data with `func`, insert the node, rotate
+    // the new node to root, and return true.
+    // Return whether the insertion is successful or not.
+    pub fn insert_owned_key_with_func<F>(
+        &mut self,
+        key: T::KeyType,
+        func: F,
+    ) -> bool
+    where
+        T::KeyType: Ord,
+        F: FnOnce(T::KeyType) -> T,
+    {
+        let path = match self.find_insert_location(&key) {
+            Some(path) => path,
+            None => return false,
+        };
+        let node = Box::new(Node::new(func(key)));
+        self.rotate_to_root(node, path);
+        return true;
     }
 
     pub fn find(&mut self, key: &T::KeyType) -> bool
@@ -235,79 +407,17 @@ impl<T: BasicOps> SplayGeneric<T> {
         return ret;
     }
 
-    /// # Arguments
-    /// * ge
-    /// 	- false: Find the first node whose value <= key.
-    /// 	- true: Find the first node whose value >= key.
-    fn __find_first_le_or_ge(
-        &mut self,
-        key: &T::KeyType,
-        ge: bool,
-    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
-    where
-        T::KeyType: Ord,
-    {
-        let mut next = self.root.take();
-        let mut path = Vec::new();
-        let mut ans_depth = 0;
-        while let Some(mut cur) = next {
-            let res = cur.d.key().cmp(key);
-            if res == Ordering::Equal {
-                path.push((cur, false));
-                ans_depth = path.len();
-                return (path, ans_depth);
-            }
-            let side = res == Ordering::Less;
-            next = cur.c[side as usize].take();
-            path.push((cur, side));
-            if side != ge {
-                ans_depth = path.len();
-            }
-        }
-        (path, ans_depth)
-    }
-    // If found, then the node will be the root, and return true.
-    // Otherwise return false.
-    fn find_first_le_or_ge(&mut self, key: &T::KeyType, ge: bool) -> bool
-    where
-        T::KeyType: Ord,
-    {
-        let (mut path, ans_depth) = self.__find_first_le_or_ge(key, ge);
-        let (mut prev, _) = match path.pop() {
-            Some(prev) => prev,
-            None => return false,
-        };
-        let ans = if ans_depth <= path.len() {
-            // prev != ans
-            prev.splay(path.split_off(ans_depth));
-            let (mut ans, side) = match path.pop() {
-                Some(ans) => ans,
-                None => {
-                    self.root = Some(prev);
-                    return false;
-                }
-            };
-            ans.c[side as usize] = Some(prev);
-            // ans.scnt will be updated by rotate_to_root later.
-            ans
-        } else {
-            // prev is ans
-            prev
-        };
-        self.rotate_to_root(ans, path);
-        return true;
-    }
     pub fn find_first_le(&mut self, key: &T::KeyType) -> bool
     where
         T::KeyType: Ord,
     {
-        self.find_first_le_or_ge(key, false)
+        self.to_interval().find_first_le(key)
     }
     pub fn find_first_ge(&mut self, key: &T::KeyType) -> bool
     where
         T::KeyType: Ord,
     {
-        return self.find_first_le_or_ge(key, true);
+        self.to_interval().find_first_ge(key)
     }
 
     // The remaining smallest will be the root.
@@ -315,7 +425,8 @@ impl<T: BasicOps> SplayGeneric<T> {
     where
         T::KeyType: Ord,
     {
-        let (mut path, ans_depth) = self.__find_first_le_or_ge(key, true);
+        let (mut path, ans_depth) =
+            self.to_interval().__find_first_le_or_ge(key, true);
         path.truncate(ans_depth);
         let mut ans = match path.pop() {
             Some((ans, _)) => ans,
@@ -326,9 +437,43 @@ impl<T: BasicOps> SplayGeneric<T> {
         ans.push_up();
         self.root = Some(ans);
     }
+
+    fn get_open_interval(
+        &mut self,
+        left: &T::KeyType,
+        right: &T::KeyType,
+    ) -> Interval<T>
+    where
+        T::KeyType: Ord,
+    {
+        let mut interval = self.to_interval();
+        let found = interval.find_first_le(left);
+        if found {
+            let rt = interval.rt.as_mut().unwrap();
+            interval = Interval::from(&mut rt.c[1]);
+        }
+        let found = interval.find_first_ge(right);
+        if found {
+            let rt = interval.rt.as_mut().unwrap();
+            interval = Interval::from(&mut rt.c[0]);
+        }
+        interval
+    }
+
+    pub fn query_in_open_interval(
+        &mut self,
+        left: &T::KeyType,
+        right: &T::KeyType,
+    ) -> Option<&T>
+    where
+        T::KeyType: Ord,
+    {
+        let interval = self.get_open_interval(left, right);
+        interval.root_data()
+    }
 }
 
-impl<T: BasicOps + SubtreeCount> SplayGeneric<T> {
+impl<T: BasicOps + SubtreeCount> Splay<T> {
     pub fn size(&self) -> T::SubtreeCountType
     where
         T::SubtreeCountType: Zero + Copy,
@@ -342,7 +487,7 @@ impl<T: BasicOps + SubtreeCount> SplayGeneric<T> {
     // If found, then the node will be the root, and return true.
     // If not found, then the last accessed node will be the root, and return
     // false.
-    pub fn query_kth<'a>(&mut self, mut k: T::SubtreeCountType) -> bool
+    pub fn find_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
     where
         T::CountType: Copy,
         T::SubtreeCountType: Ord
@@ -351,33 +496,7 @@ impl<T: BasicOps + SubtreeCount> SplayGeneric<T> {
             + Add<T::CountType, Output = T::SubtreeCountType>
             + SubAssign,
     {
-        let mut next = self.root.take();
-        let mut path = Vec::new();
-        while let Some(mut cur) = next {
-            let lscnt = if let Some(ref lc) = cur.c[0] {
-                *lc.d.subtree_count()
-            } else {
-                T::SubtreeCountType::zero()
-            };
-            let cur_cnt = *cur.d.cnt();
-            if &lscnt < &k && &(lscnt + cur_cnt) >= &k {
-                self.rotate_to_root(cur, path);
-                return true;
-            }
-            let side = lscnt < k;
-            if side {
-                k -= lscnt + cur_cnt;
-            };
-            next = cur.c[side as usize].take();
-            path.push((cur, side));
-        }
-        let (x, _) = if let Some(x) = path.pop() {
-            x
-        } else {
-            return false;
-        };
-        self.rotate_to_root(x, path);
-        return false;
+        self.to_interval().find_kth(k)
     }
 
     fn check_sanity_subtree<'a>(&self, rt: &Box<Node<T>>)
@@ -410,93 +529,91 @@ impl<T: BasicOps + SubtreeCount> SplayGeneric<T> {
     }
 }
 
-impl<T: BasicOps> SplayGeneric<T> {
-    fn __print_subtree_non_empty(&self, rt: &Node<T>, str: &mut String)
-    where
-        T::KeyType: std::fmt::Display,
-        T::CountType: One + PartialEq + std::fmt::Display,
-    {
-        let ori_len = str.len();
-        let node = if rt.d.cnt().is_one() {
-            format!("{}", rt.d.key())
-        } else {
-            format!("{}*{}", rt.d.key(), rt.d.cnt())
-        };
-        let len = node.len();
-        print!("{}", node);
-        print!("---");
-        // str.push_str(&String::from_iter(std::iter::repeat(' ').take(len)));
-        str.push_str(&std::iter::repeat(' ').take(len).collect::<String>());
-        str.push_str(" | ");
-        self.__print_subtree(&rt.c[0], str);
-        println!("{}", str);
-        let len = str.len();
-        unsafe {
-            str.as_bytes_mut()[len - 1] = b'-';
-            str.as_bytes_mut()[len - 2] = b'-';
-        }
-        print!("{}", str);
+fn __print_subtree_non_empty<T>(rt: &Node<T>, str: &mut String)
+where
+    T: BasicOps + std::fmt::Display,
+{
+    let ori_len = str.len();
+    let node = format!("{}", rt.d);
+    let len = node.len();
+    print!("{}", node);
+    print!("---");
+    // str.push_str(&String::from_iter(std::iter::repeat(' ').take(len)));
+    str.push_str(&std::iter::repeat(' ').take(len).collect::<String>());
+    str.push_str(" | ");
+    __print_subtree(&rt.c[0], str);
+    println!("{}", str);
+    let len = str.len();
+    unsafe {
+        str.as_bytes_mut()[len - 1] = b'-';
+        str.as_bytes_mut()[len - 2] = b'-';
+    }
+    print!("{}", str);
 
-        unsafe {
-            str.as_bytes_mut()[len - 1] = b' ';
-            str.as_bytes_mut()[len - 2] = b' ';
-        }
-        self.__print_subtree(&rt.c[1], str);
+    unsafe {
+        str.as_bytes_mut()[len - 1] = b' ';
+        str.as_bytes_mut()[len - 2] = b' ';
+    }
+    __print_subtree(&rt.c[1], str);
 
-        str.truncate(ori_len);
+    str.truncate(ori_len);
+}
+fn __print_subtree<T>(rt: &Option<Box<Node<T>>>, str: &mut String)
+where
+    T: BasicOps + std::fmt::Display,
+{
+    if let Some(node) = rt {
+        __print_subtree_non_empty(node, str);
+    } else {
+        println!("/\\");
     }
-    fn __print_subtree(&self, rt: &Option<Box<Node<T>>>, str: &mut String)
-    where
-        T::KeyType: std::fmt::Display,
-        T::CountType: One + PartialEq + std::fmt::Display,
-    {
-        if let Some(node) = rt {
-            self.__print_subtree_non_empty(node, str);
-        } else {
-            println!("/\\");
-        }
+}
+fn print_subtree<T>(rt: &Option<Box<Node<T>>>)
+where
+    T: BasicOps + std::fmt::Display,
+{
+    __print_subtree(rt, &mut String::new());
+}
+
+fn collect_non_empty_subtree_data<'a, T>(
+    rt: &'a Box<Node<T>>,
+    elems: &mut Vec<&'a T>,
+) {
+    collect_subtree_data(&rt.c[0], elems);
+    elems.push(&rt.d);
+    collect_subtree_data(&rt.c[1], elems);
+}
+fn collect_subtree_data<'a, T>(
+    rt: &'a Option<Box<Node<T>>>,
+    elems: &mut Vec<&'a T>,
+) {
+    if let Some(rt) = rt {
+        collect_non_empty_subtree_data(rt, elems);
     }
-    fn print_subtree(&self, rt: &Option<Box<Node<T>>>)
-    where
-        T::KeyType: std::fmt::Display,
-        T::CountType: One + PartialEq + std::fmt::Display,
-    {
-        self.__print_subtree(rt, &mut String::new());
+}
+
+impl<T: BasicOps + std::fmt::Display> Splay<T> {
+    pub fn print_tree(&self) {
+        print_subtree(&self.root);
     }
-    pub fn print_tree(&self)
-    where
-        T::KeyType: std::fmt::Display,
-        T::CountType: One + PartialEq + std::fmt::Display,
-    {
-        self.print_subtree(&self.root);
+    pub fn collect_data(&self) -> Vec<&T> {
+        let mut elems = Vec::new();
+        collect_subtree_data(&self.root, &mut elems);
+        elems
     }
 }
 
 // Example
-struct SplayData<T> {
+struct RankTreeData<T> {
     key: T,
     cnt: u32,
     scnt: u32,
 }
 
-impl<T> BasicOps for SplayData<T> {
+impl<T> BasicOps for RankTreeData<T> {
     type KeyType = T;
-    type CountType = u32;
-    fn new(key: T) -> Self {
-        SplayData {
-            key,
-            cnt: 1,
-            scnt: 1,
-        }
-    }
     fn key(&self) -> &Self::KeyType {
         &self.key
-    }
-    fn cnt(&self) -> &Self::CountType {
-        &self.cnt
-    }
-    fn cnt_mut(&mut self) -> &mut Self::CountType {
-        &mut self.cnt
     }
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
         self.scnt = self.cnt;
@@ -509,22 +626,33 @@ impl<T> BasicOps for SplayData<T> {
     }
 }
 
-impl<T> SubtreeCount for SplayData<T> {
+impl<T> Count for RankTreeData<T> {
+    type CountType = u32;
+    fn cnt(&self) -> &Self::CountType {
+        &self.cnt
+    }
+}
+
+impl<T> SubtreeCount for RankTreeData<T> {
     type SubtreeCountType = u32;
     fn subtree_count(&self) -> &Self::SubtreeCountType {
         &self.scnt
     }
 }
 
-pub struct Splay<T> {
-    rep: SplayGeneric<SplayData<T>>,
+impl<T: std::fmt::Display> std::fmt::Display for RankTreeData<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}*{}", self.key, self.cnt)
+    }
 }
 
-impl<T> Splay<T> {
-    pub fn new() -> Splay<T> {
-        Splay {
-            rep: SplayGeneric::new(),
-        }
+pub struct RankTree<T> {
+    rep: Splay<RankTreeData<T>>,
+}
+
+impl<T> RankTree<T> {
+    pub fn new() -> RankTree<T> {
+        RankTree { rep: Splay::new() }
     }
     pub fn size(&self) -> u32 {
         self.rep.size()
@@ -534,9 +662,20 @@ impl<T> Splay<T> {
     }
 }
 
-impl<T: Ord> Splay<T> {
+impl<T: Ord> RankTree<T> {
     pub fn insert(&mut self, key: T) {
-        self.rep.insert(key)
+        let res =
+            self.rep
+                .insert_owned_key_with_func(key, |key| RankTreeData {
+                    key,
+                    cnt: 1,
+                    scnt: 1,
+                });
+        if !res {
+            self.rep.update_root_data(|d| {
+                d.cnt += 1;
+            });
+        }
     }
     pub fn find(&mut self, key: &T) -> bool {
         self.rep.find(key)
@@ -547,8 +686,7 @@ impl<T: Ord> Splay<T> {
     pub fn find_first_le(&mut self, key: &T) -> bool {
         self.rep.find_first_le(key)
     }
-    // find_first_ge
-    pub fn lower_bound(&mut self, key: &T) -> bool {
+    pub fn find_first_ge(&mut self, key: &T) -> bool {
         self.rep.find_first_ge(key)
     }
     // The remaining smallest will be the root.
@@ -556,7 +694,7 @@ impl<T: Ord> Splay<T> {
         self.rep.del_smaller(key)
     }
     pub fn query_kth(&mut self, k: u32) -> Option<&T> {
-        if self.rep.query_kth(k) {
+        if self.rep.find_kth(k) {
             self.root_key()
         } else {
             None
@@ -567,7 +705,7 @@ impl<T: Ord> Splay<T> {
     }
 }
 
-impl<T: std::fmt::Display> Splay<T> {
+impl<T: std::fmt::Display> RankTree<T> {
     pub fn print_tree(&self) {
         self.rep.print_tree()
     }
