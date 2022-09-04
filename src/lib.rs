@@ -306,6 +306,23 @@ impl<T: WithKey> From<Vec<T::KeyType>> for Splay<T> {
     }
 }
 
+fn collect_non_empty_subtree_data<'a, T>(
+    rt: &'a Box<Node<T>>,
+    elems: &mut Vec<&'a T>,
+) {
+    collect_subtree_data(&rt.c[0], elems);
+    elems.push(&rt.d);
+    collect_subtree_data(&rt.c[1], elems);
+}
+fn collect_subtree_data<'a, T>(
+    rt: &'a Option<Box<Node<T>>>,
+    elems: &mut Vec<&'a T>,
+) {
+    if let Some(rt) = rt {
+        collect_non_empty_subtree_data(rt, elems);
+    }
+}
+
 impl<T: BasicOps> Splay<T> {
     fn to_interval(&mut self) -> Interval<T> {
         Interval { rt: &mut self.root }
@@ -355,6 +372,9 @@ impl<T: BasicOps> Splay<T> {
     }
     fn delete_root(&mut self) -> bool {
         self.take_root().is_some()
+    }
+    fn pop_root(&mut self) -> Option<T> {
+        self.take_root().map(|rt| rt.d)
     }
     pub fn deref_root(&mut self) -> bool
     where
@@ -470,15 +490,26 @@ impl<T: BasicOps> Splay<T> {
         return ret;
     }
 
-    fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
+    fn find_smallest_or_largest(&mut self, is_largest: bool) {
         let mut path = Vec::new();
         find_smallest_or_largest(self.root.take(), is_largest, &mut path);
         let x = match path.pop() {
             Some((x, _)) => x,
-            None => return None,
+            None => return,
         };
         self.rotate_to_root(x, path);
-        Some(&self.root.as_ref().unwrap().d)
+    }
+    pub fn pop_smallest(&mut self) -> Option<T> {
+        self.find_smallest_or_largest(false);
+        self.pop_root()
+    }
+    pub fn pop_largest(&mut self) -> Option<T> {
+        self.find_smallest_or_largest(true);
+        self.pop_root()
+    }
+    fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
+        self.find_smallest_or_largest(is_largest);
+        self.root_data()
     }
     pub fn query_smallest(&mut self) -> Option<&T> {
         self.query_smallest_or_largest(false)
@@ -532,6 +563,12 @@ impl<T: BasicOps> Splay<T> {
     ) -> Option<&T> {
         let interval = self.get_open_interval(left, right);
         interval.root_data()
+    }
+
+    pub fn collect_data(&self) -> Vec<&T> {
+        let mut elems = Vec::new();
+        collect_subtree_data(&self.root, &mut elems);
+        elems
     }
 }
 
@@ -637,31 +674,9 @@ where
     __print_subtree(rt, &mut String::new());
 }
 
-fn collect_non_empty_subtree_data<'a, T>(
-    rt: &'a Box<Node<T>>,
-    elems: &mut Vec<&'a T>,
-) {
-    collect_subtree_data(&rt.c[0], elems);
-    elems.push(&rt.d);
-    collect_subtree_data(&rt.c[1], elems);
-}
-fn collect_subtree_data<'a, T>(
-    rt: &'a Option<Box<Node<T>>>,
-    elems: &mut Vec<&'a T>,
-) {
-    if let Some(rt) = rt {
-        collect_non_empty_subtree_data(rt, elems);
-    }
-}
-
 impl<T: BasicOps + std::fmt::Display> Splay<T> {
     pub fn print_tree(&self) {
         print_subtree(&self.root);
-    }
-    pub fn collect_data(&self) -> Vec<&T> {
-        let mut elems = Vec::new();
-        collect_subtree_data(&self.root, &mut elems);
-        elems
     }
 }
 
