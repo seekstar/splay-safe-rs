@@ -1,4 +1,6 @@
-use num_traits::Zero;
+mod tests;
+
+use num_traits::{One, Zero};
 
 use std::ops::Add;
 use std::ops::SubAssign;
@@ -10,9 +12,21 @@ pub trait BasicOps {
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>);
 }
 
+pub trait WithKey: BasicOps {
+    fn with_key(key: Self::KeyType) -> Self;
+}
+
 pub trait Count {
     type CountType;
     fn cnt(&self) -> &Self::CountType;
+}
+
+pub trait CountAdd: Count {
+    fn cnt_add(&mut self, delta: &Self::CountType);
+}
+
+pub trait CountSub: Count {
+    fn cnt_sub(&mut self, delta: &Self::CountType);
 }
 
 pub trait SubtreeCount: Count {
@@ -43,6 +57,18 @@ impl<T> Node<T> {
     // fn rc_data(&self) -> Option<&T> {
     //     self.child_data(true)
     // }
+}
+
+fn find_smallest_or_largest<T>(
+    rt: Option<Box<Node<T>>>,
+    is_largest: bool,
+    path: &mut Vec<(Box<Node<T>>, bool)>,
+) {
+    let mut next = rt;
+    while let Some(mut cur) = next {
+        next = cur.c[is_largest as usize].take();
+        path.push((cur, is_largest));
+    }
 }
 
 impl<T: BasicOps> Node<T> {
@@ -109,13 +135,9 @@ impl<T: BasicOps> Node<T> {
         is_next: bool,
     ) -> Vec<(Box<Node<T>>, bool)> {
         let mut path = Vec::new();
-        let mut next = self.c[is_next as usize].take();
-        let side = !is_next;
-        while let Some(mut cur) = next {
-            next = cur.c[side as usize].take();
-            path.push((cur, side));
-        }
-        return path;
+        let next = self.c[is_next as usize].take();
+        find_smallest_or_largest(next, !is_next, &mut path);
+        path
     }
 }
 
@@ -306,7 +328,7 @@ impl<T: BasicOps> Splay<T> {
             Some((x, _)) => x,
             None => {
                 self.root = root.c[1].take();
-                return None;
+                return Some(root);
             }
         };
         x.__splay(path);
@@ -314,6 +336,26 @@ impl<T: BasicOps> Splay<T> {
         x.push_up();
         self.root = Some(x);
         return Some(root);
+    }
+    fn delete_root(&mut self) -> bool {
+        self.take_root().is_some()
+    }
+    pub fn deref_root(&mut self) -> bool
+    where
+        T: CountSub,
+        T::CountType: Zero + One,
+    {
+        let root = match self.root.as_mut() {
+            Some(root) => root,
+            None => return false,
+        };
+        root.d.cnt_sub(&T::CountType::one());
+        if root.d.cnt().is_zero() {
+            self.delete_root()
+        } else {
+            root.push_up();
+            true
+        }
     }
 
     // If the key does not already exist, then return the path to the insert
@@ -370,6 +412,23 @@ impl<T: BasicOps> Splay<T> {
         self.rotate_to_root(node, path);
         return true;
     }
+    pub fn insert_owned_key(&mut self, key: T::KeyType) -> bool
+    where
+        T: WithKey,
+        T::KeyType: Ord,
+    {
+        self.insert_owned_key_with_func(key, |key| T::with_key(key))
+    }
+    pub fn insert_owned_key_or_inc_cnt(&mut self, key: T::KeyType)
+    where
+        T: WithKey + CountAdd,
+        T::KeyType: Ord,
+        T::CountType: One,
+    {
+        if self.insert_owned_key(key) == false {
+            self.update_root_data(|d| d.cnt_add(&T::CountType::one()));
+        }
+    }
 
     pub fn find(&mut self, key: &T::KeyType) -> bool
     where
@@ -405,6 +464,20 @@ impl<T: BasicOps> Splay<T> {
             self.take_root();
         }
         return ret;
+    }
+
+    fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
+        let mut path = Vec::new();
+        find_smallest_or_largest(self.root.take(), is_largest, &mut path);
+        let x = match path.pop() {
+            Some((x, _)) => x,
+            None => return None,
+        };
+        self.rotate_to_root(x, path);
+        Some(&self.root.as_ref().unwrap().d)
+    }
+    pub fn query_smallest(&mut self) -> Option<&T> {
+        self.query_smallest_or_largest(false)
     }
 
     pub fn find_first_le(&mut self, key: &T::KeyType) -> bool
@@ -626,10 +699,26 @@ impl<T> BasicOps for RankTreeData<T> {
     }
 }
 
+impl<T> WithKey for RankTreeData<T> {
+    fn with_key(key: Self::KeyType) -> Self {
+        RankTreeData {
+            key: key,
+            cnt: 1,
+            scnt: 1,
+        }
+    }
+}
+
 impl<T> Count for RankTreeData<T> {
     type CountType = u32;
     fn cnt(&self) -> &Self::CountType {
         &self.cnt
+    }
+}
+
+impl<T> CountAdd for RankTreeData<T> {
+    fn cnt_add(&mut self, delta: &Self::CountType) {
+        self.cnt += delta;
     }
 }
 
@@ -664,18 +753,7 @@ impl<T> RankTree<T> {
 
 impl<T: Ord> RankTree<T> {
     pub fn insert(&mut self, key: T) {
-        let res =
-            self.rep
-                .insert_owned_key_with_func(key, |key| RankTreeData {
-                    key,
-                    cnt: 1,
-                    scnt: 1,
-                });
-        if !res {
-            self.rep.update_root_data(|d| {
-                d.cnt += 1;
-            });
-        }
+        self.rep.insert_owned_key_or_inc_cnt(key);
     }
     pub fn find(&mut self, key: &T) -> bool {
         self.rep.find(key)
