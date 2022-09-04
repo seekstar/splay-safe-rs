@@ -36,10 +36,7 @@ mod tests {
                 self.cnt -= delta;
             }
         }
-        let mut splay = Splay::<SplayData>::new();
-        assert!(splay.insert_owned_key(1));
-        assert!(splay.insert_owned_key(2));
-        assert!(splay.insert_owned_key(9));
+        let mut splay = Splay::<SplayData>::from(vec![1, 2, 9]);
         assert_eq!(splay.query_smallest().unwrap().key(), &1);
         assert!(splay.deref_root());
         assert_eq!(splay.query_smallest().unwrap().key(), &2);
