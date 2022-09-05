@@ -86,5 +86,12 @@ mod tests {
                 &SplayData { key: 3, value: 3 },
             ]
         );
+        assert_eq!(
+            splay.take_all_data(),
+            vec![
+                SplayData { key: 2, value: 5 },
+                SplayData { key: 3, value: 3 },
+            ]
+        );
     }
 }

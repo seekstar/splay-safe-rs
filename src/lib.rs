@@ -323,6 +323,17 @@ fn collect_subtree_data<'a, T>(
     }
 }
 
+fn take_non_empty_subtree_data<T>(mut rt: Box<Node<T>>, elems: &mut Vec<T>) {
+    take_subtree_data(rt.c[0].take(), elems);
+    elems.push(rt.d);
+    take_subtree_data(rt.c[1].take(), elems);
+}
+fn take_subtree_data<T>(rt: Option<Box<Node<T>>>, elems: &mut Vec<T>) {
+    if let Some(rt) = rt {
+        take_non_empty_subtree_data(rt, elems);
+    }
+}
+
 impl<T: BasicOps> Splay<T> {
     fn to_interval(&mut self) -> Interval<T> {
         Interval { rt: &mut self.root }
@@ -568,6 +579,11 @@ impl<T: BasicOps> Splay<T> {
     pub fn collect_data(&self) -> Vec<&T> {
         let mut elems = Vec::new();
         collect_subtree_data(&self.root, &mut elems);
+        elems
+    }
+    pub fn take_all_data(&mut self) -> Vec<T> {
+        let mut elems = Vec::new();
+        take_subtree_data(self.root.take(), &mut elems);
         elems
     }
 }
