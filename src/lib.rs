@@ -292,10 +292,12 @@ fn build<T: BasicOps + WithKey>(
     debug_assert_eq!(mid + 1, v.len());
     let key = v.pop().unwrap();
     let lc = build(v, start);
-    Some(Box::new(Node {
+    let mut node = Box::new(Node {
         d: T::with_key(key),
         c: [lc, rc],
-    }))
+    });
+    node.push_up();
+    Some(node)
 }
 impl<T: WithKey> From<Vec<T::KeyType>> for Splay<T> {
     fn from(mut v: Vec<T::KeyType>) -> Splay<T> {
