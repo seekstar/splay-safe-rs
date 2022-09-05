@@ -299,7 +299,7 @@ fn build<T: BasicOps + WithKey>(
 }
 impl<T: WithKey> From<Vec<T::KeyType>> for Splay<T> {
     fn from(mut v: Vec<T::KeyType>) -> Splay<T> {
-        v.sort();
+        v.sort_unstable();
         let root = build(&mut v, 0);
         debug_assert!(v.is_empty());
         Splay { root }
