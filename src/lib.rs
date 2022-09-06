@@ -8,7 +8,10 @@ use core::ops::{Add, AddAssign, SubAssign};
 pub trait BasicOps {
     type KeyType: Ord;
     fn key(&self) -> &Self::KeyType;
-    fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>);
+    #[allow(unused)]
+    fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {}
+    #[allow(unused)]
+    fn push_down(&mut self, lc: Option<&mut Self>, rc: Option<&mut Self>) {}
 }
 
 // TODO: Use From trait instead.
@@ -57,16 +60,24 @@ impl<T> Node<T> {
     // fn rc_data(&self) -> Option<&T> {
     //     self.child_data(true)
     // }
+    fn members_mut(
+        &mut self,
+    ) -> (&mut Option<Box<Node<T>>>, &mut Option<Box<Node<T>>>, &mut T) {
+        let (lc, rc) = self.c.split_at_mut(1);
+        (&mut lc[0], &mut rc[0], &mut self.d)
+    }
 }
 
 fn find_smallest_or_largest<T>(
     rt: Option<Box<Node<T>>>,
     is_largest: bool,
     path: &mut Vec<(Box<Node<T>>, bool)>,
-) {
+) where
+    T: BasicOps,
+{
     let mut next = rt;
     while let Some(mut cur) = next {
-        next = cur.c[is_largest as usize].take();
+        next = cur.take_child(is_largest);
         path.push((cur, is_largest));
     }
 }
@@ -81,6 +92,21 @@ impl<T: BasicOps> Node<T> {
             self.c[1].as_ref().map(|x| &x.d),
         )
     }
+    fn push_down(&mut self) {
+        let (lc, rc, d) = self.members_mut();
+        d.push_down(
+            lc.as_mut().map(|x| &mut x.d),
+            rc.as_mut().map(|x| &mut x.d),
+        );
+    }
+    fn take_child(&mut self, side: bool) -> Option<Box<Node<T>>> {
+        self.push_down();
+        self.c[side as usize].take()
+    }
+    fn set_child(&mut self, side: bool, child: Option<Box<Node<T>>>) {
+        self.c[side as usize] = child;
+        self.push_up();
+    }
     // y is the parent of x
     // Will update y.scnt
     // Dirty: x.scnt, x <-> to
@@ -90,8 +116,7 @@ impl<T: BasicOps> Node<T> {
         side_x: bool,
     ) {
         let w = self.c[!side_x as usize].take();
-        y.c[side_x as usize] = w;
-        y.push_up();
+        y.set_child(side_x, w);
         self.c[!side_x as usize] = Some(y);
     }
     // Nodes in path will be updated
@@ -135,13 +160,13 @@ impl<T: BasicOps> Node<T> {
         is_next: bool,
     ) -> Vec<(Box<Node<T>>, bool)> {
         let mut path = Vec::new();
-        let next = self.c[is_next as usize].take();
+        let next = self.take_child(is_next);
         find_smallest_or_largest(next, !is_next, &mut path);
         path
     }
 }
 
-struct Interval<'a, T> {
+pub struct Interval<'a, T> {
     rt: &'a mut Option<Box<Node<T>>>,
 }
 
@@ -152,10 +177,23 @@ impl<'a, T> From<&'a mut Option<Box<Node<T>>>> for Interval<'a, T> {
 }
 
 impl<'a, T: BasicOps> Interval<'a, T> {
-    fn root_data(self) -> Option<&'a T> {
-        self.rt.as_ref().map(|x| &x.d)
+    fn consume(self) -> &'a mut Option<Box<Node<T>>> {
+        self.rt
     }
-    fn rotate_to_root(
+    // Return updated or not
+    pub fn update_root_data<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&mut T),
+    {
+        let root = match self.rt.as_mut() {
+            Some(root) => root,
+            None => return false,
+        };
+        f(&mut root.d);
+        root.push_up();
+        return true;
+    }
+    fn __rotate_to_root(
         &mut self,
         mut x: Box<Node<T>>,
         path: Vec<(Box<Node<T>>, bool)>,
@@ -163,11 +201,19 @@ impl<'a, T: BasicOps> Interval<'a, T> {
         x.splay(path);
         *self.rt = Some(x);
     }
+    fn rotate_to_root(
+        &mut self,
+        mut x: Box<Node<T>>,
+        path: Vec<(Box<Node<T>>, bool)>,
+    ) {
+        x.push_down();
+        self.__rotate_to_root(x, path);
+    }
     /// # Arguments
     /// * ge
     /// 	- false: Find the first node whose value <= key.
     /// 	- true: Find the first node whose value >= key.
-    fn __find_first_le_or_ge(
+    fn path_to_first_le_or_ge(
         &mut self,
         key: &T::KeyType,
         ge: bool,
@@ -183,7 +229,7 @@ impl<'a, T: BasicOps> Interval<'a, T> {
                 return (path, ans_depth);
             }
             let side = res == Ordering::Less;
-            next = cur.c[side as usize].take();
+            next = cur.take_child(side);
             path.push((cur, side));
             if side != ge {
                 ans_depth = path.len();
@@ -191,10 +237,11 @@ impl<'a, T: BasicOps> Interval<'a, T> {
         }
         (path, ans_depth)
     }
-    // If found, then the node will be the root, and return true.
-    // Otherwise return false.
-    fn find_first_le_or_ge(&mut self, key: &T::KeyType, ge: bool) -> bool {
-        let (mut path, ans_depth) = self.__find_first_le_or_ge(key, ge);
+    fn rotate_ans_to_root(
+        &mut self,
+        mut path: Vec<(Box<Node<T>>, bool)>,
+        ans_depth: usize,
+    ) -> bool {
         let (mut prev, _) = match path.pop() {
             Some(prev) => prev,
             None => return false,
@@ -216,14 +263,57 @@ impl<'a, T: BasicOps> Interval<'a, T> {
             // prev is ans
             prev
         };
-        self.rotate_to_root(ans, path);
+        self.__rotate_to_root(ans, path);
         return true;
+    }
+    // If found, then the node will be the root, and return true.
+    // Otherwise return false.
+    fn find_first_le_or_ge(&mut self, key: &T::KeyType, ge: bool) -> bool {
+        let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
+        self.rotate_ans_to_root(path, ans_depth)
     }
     fn find_first_le(&mut self, key: &T::KeyType) -> bool {
         self.find_first_le_or_ge(key, false)
     }
     fn find_first_ge(&mut self, key: &T::KeyType) -> bool {
         self.find_first_le_or_ge(key, true)
+    }
+
+    fn path_to_first_less_or_greater<const GREATER: bool>(
+        &mut self,
+        key: &T::KeyType,
+    ) -> (Vec<(Box<Node<T>>, bool)>, usize) {
+        let mut next = self.rt.take();
+        let mut path = Vec::new();
+        let mut ans_depth = 0;
+        let go_right = if GREATER {
+            T::KeyType::le
+        } else {
+            T::KeyType::lt
+        };
+        while let Some(mut cur) = next {
+            let side = go_right(cur.d.key(), key);
+            next = cur.take_child(side);
+            path.push((cur, side));
+            if side != GREATER {
+                ans_depth = path.len();
+            }
+        }
+        (path, ans_depth)
+    }
+    fn find_first_less_or_greater<const GREATER: bool>(
+        &mut self,
+        key: &T::KeyType,
+    ) -> bool {
+        let (path, ans_depth) =
+            self.path_to_first_less_or_greater::<GREATER>(key);
+        self.rotate_ans_to_root(path, ans_depth)
+    }
+    fn find_first_less(&mut self, key: &T::KeyType) -> bool {
+        self.find_first_less_or_greater::<false>(key)
+    }
+    fn find_first_greater(&mut self, key: &T::KeyType) -> bool {
+        self.find_first_less_or_greater::<true>(key)
     }
 }
 
@@ -240,6 +330,7 @@ impl<'a, T: BasicOps + SubtreeCount> Interval<'a, T> {
         let mut next = self.rt.take();
         let mut path = Vec::new();
         while let Some(mut cur) = next {
+            cur.push_down();
             let lscnt = if let Some(ref lc) = cur.c[0] {
                 *lc.d.subtree_count()
             } else {
@@ -247,7 +338,7 @@ impl<'a, T: BasicOps + SubtreeCount> Interval<'a, T> {
             };
             let cur_cnt = *cur.d.cnt();
             if &lscnt < &k && &(lscnt + cur_cnt) >= &k {
-                self.rotate_to_root(cur, path);
+                self.__rotate_to_root(cur, path);
                 return true;
             }
             let side = lscnt < k;
@@ -262,7 +353,7 @@ impl<'a, T: BasicOps + SubtreeCount> Interval<'a, T> {
         } else {
             return false;
         };
-        self.rotate_to_root(x, path);
+        self.__rotate_to_root(x, path);
         return false;
     }
 }
@@ -278,21 +369,25 @@ impl<T> Splay<T> {
     }
 }
 
-fn build<T: BasicOps + WithKey>(
-    v: &mut Vec<T::KeyType>,
+fn build<T: BasicOps, E, F>(
+    v: &mut Vec<E>,
     start: usize,
-) -> Option<Box<Node<T>>> {
+    constructor: F,
+) -> Option<Box<Node<T>>>
+where
+    F: Copy + Fn(E) -> T,
+{
     let len = v.len() - start;
     if len == 0 {
         return None;
     }
     let mid = start + len / 2;
-    let rc = build(v, mid + 1);
+    let rc = build(v, mid + 1, constructor);
     debug_assert_eq!(mid + 1, v.len());
-    let key = v.pop().unwrap();
-    let lc = build(v, start);
+    let e = v.pop().unwrap();
+    let lc = build(v, start, constructor);
     let mut node = Box::new(Node {
-        d: T::with_key(key),
+        d: constructor(e),
         c: [lc, rc],
     });
     node.push_up();
@@ -301,9 +396,7 @@ fn build<T: BasicOps + WithKey>(
 impl<T: WithKey> From<Vec<T::KeyType>> for Splay<T> {
     fn from(mut v: Vec<T::KeyType>) -> Splay<T> {
         v.sort_unstable();
-        let root = build(&mut v, 0);
-        debug_assert!(v.is_empty());
-        Splay { root }
+        Splay::from_sorted(v, T::with_key)
     }
 }
 
@@ -324,20 +417,42 @@ fn collect_subtree_data<'a, T>(
     }
 }
 
-fn take_non_empty_subtree_data<T>(mut rt: Box<Node<T>>, elems: &mut Vec<T>) {
+fn take_non_empty_subtree_data<T>(mut rt: Box<Node<T>>, elems: &mut Vec<T>)
+where
+    T: BasicOps,
+{
+    rt.push_down();
     take_subtree_data(rt.c[0].take(), elems);
     elems.push(rt.d);
     take_subtree_data(rt.c[1].take(), elems);
 }
-fn take_subtree_data<T>(rt: Option<Box<Node<T>>>, elems: &mut Vec<T>) {
+fn take_subtree_data<T>(rt: Option<Box<Node<T>>>, elems: &mut Vec<T>)
+where
+    T: BasicOps,
+{
     if let Some(rt) = rt {
         take_non_empty_subtree_data(rt, elems);
     }
 }
 
 impl<T: BasicOps> Splay<T> {
+    pub fn from_sorted<E, F>(mut v: Vec<E>, constructor: F) -> Splay<T>
+    where
+        F: Copy + Fn(E) -> T,
+    {
+        let root = build(&mut v, 0, constructor);
+        debug_assert!(v.is_empty());
+        Splay { root }
+    }
     fn to_interval(&mut self) -> Interval<T> {
         Interval { rt: &mut self.root }
+    }
+    fn __rotate_to_root(
+        &mut self,
+        x: Box<Node<T>>,
+        path: Vec<(Box<Node<T>>, bool)>,
+    ) {
+        self.to_interval().__rotate_to_root(x, path);
     }
     fn rotate_to_root(
         &mut self,
@@ -355,13 +470,7 @@ impl<T: BasicOps> Splay<T> {
     where
         F: FnOnce(&mut T),
     {
-        let root = match self.root.as_mut() {
-            Some(root) => root,
-            None => return false,
-        };
-        f(&mut root.d);
-        root.push_up();
-        return true;
+        self.to_interval().update_root_data(f)
     }
     fn take_root(&mut self) -> Option<Box<Node<T>>> {
         let mut root = match self.root.take() {
@@ -372,13 +481,12 @@ impl<T: BasicOps> Splay<T> {
         let mut x = match path.pop() {
             Some((x, _)) => x,
             None => {
-                self.root = root.c[1].take();
+                self.root = root.take_child(true);
                 return Some(root);
             }
         };
         x.__splay(path);
-        x.c[1] = root.c[1].take();
-        x.push_up();
+        x.set_child(true, root.take_child(true));
         self.root = Some(x);
         return Some(root);
     }
@@ -427,7 +535,7 @@ impl<T: BasicOps> Splay<T> {
                 return None;
             }
             let side = cur.d.key() < key;
-            let next = cur.c[side as usize].take();
+            let next = cur.take_child(side);
             path.push((cur, side));
             if let Some(nex) = next {
                 cur = nex
@@ -453,7 +561,7 @@ impl<T: BasicOps> Splay<T> {
             None => return false,
         };
         let node = Box::new(Node::new(func(key)));
-        self.rotate_to_root(node, path);
+        self.__rotate_to_root(node, path);
         return true;
     }
     pub fn insert_owned_key(&mut self, key: T::KeyType) -> bool
@@ -482,7 +590,7 @@ impl<T: BasicOps> Splay<T> {
                 return true;
             }
             let side = res == Ordering::Greater;
-            next = cur.c[side as usize].take();
+            next = cur.take_child(side);
             path.push((cur, side));
         }
         // Not found. Rotate the last accessed node to root to maintain
@@ -491,7 +599,7 @@ impl<T: BasicOps> Splay<T> {
             Some((prev, _)) => prev,
             None => return false,
         };
-        self.rotate_to_root(prev, path);
+        self.__rotate_to_root(prev, path);
         return false;
     }
     pub fn delete(&mut self, key: &T::KeyType) -> bool {
@@ -509,7 +617,7 @@ impl<T: BasicOps> Splay<T> {
             Some((x, _)) => x,
             None => return,
         };
-        self.rotate_to_root(x, path);
+        self.__rotate_to_root(x, path);
     }
     pub fn pop_smallest(&mut self) -> Option<T> {
         self.find_smallest_or_largest(false);
@@ -537,15 +645,14 @@ impl<T: BasicOps> Splay<T> {
     // The remaining smallest will be the root.
     pub fn del_smaller(&mut self, key: &T::KeyType) {
         let (mut path, ans_depth) =
-            self.to_interval().__find_first_le_or_ge(key, true);
+            self.to_interval().path_to_first_le_or_ge(key, true);
         path.truncate(ans_depth);
         let mut ans = match path.pop() {
             Some((ans, _)) => ans,
             None => return,
         };
         ans.__splay(path);
-        ans.c[0] = None;
-        ans.push_up();
+        ans.set_child(false, None);
         self.root = Some(ans);
     }
 
@@ -567,6 +674,24 @@ impl<T: BasicOps> Splay<T> {
         }
         interval
     }
+    pub fn get_closed_interval(
+        &mut self,
+        left: &T::KeyType,
+        right: &T::KeyType,
+    ) -> Interval<T> {
+        let mut interval = self.to_interval();
+        let found = interval.find_first_less(left);
+        if found {
+            let rt = interval.rt.as_mut().unwrap();
+            interval = Interval::from(&mut rt.c[1]);
+        }
+        let found = interval.find_first_greater(right);
+        if found {
+            let rt = interval.rt.as_mut().unwrap();
+            interval = Interval::from(&mut rt.c[0]);
+        }
+        interval
+    }
 
     pub fn query_in_open_interval(
         &mut self,
@@ -574,9 +699,10 @@ impl<T: BasicOps> Splay<T> {
         right: &T::KeyType,
     ) -> Option<&T> {
         let interval = self.get_open_interval(left, right);
-        interval.root_data()
+        interval.consume().as_ref().map(|x| &x.d)
     }
 
+    /// Warning: This function does not perform push_down.
     pub fn collect_data(&self) -> Vec<&T> {
         let mut elems = Vec::new();
         collect_subtree_data(&self.root, &mut elems);

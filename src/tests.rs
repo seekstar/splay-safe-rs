@@ -94,4 +94,64 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn luogu_3368() {
+        struct SplayData {
+            key: i32,
+            value: i32,
+            lazy: i32,
+        }
+        impl BasicOps for SplayData {
+            type KeyType = i32;
+            fn key(&self) -> &Self::KeyType {
+                &self.key
+            }
+            fn push_down(
+                &mut self,
+                lc: Option<&mut Self>,
+                rc: Option<&mut Self>,
+            ) {
+                if self.lazy != 0 {
+                    if let Some(c) = lc {
+                        c.value += self.lazy;
+                        c.lazy += self.lazy;
+                    }
+                    if let Some(c) = rc {
+                        c.value += self.lazy;
+                        c.lazy += self.lazy;
+                    }
+                    self.lazy = 0;
+                }
+            }
+        }
+        fn interval_add(splay: &mut Splay<SplayData>, x: i32, y: i32, k: i32) {
+            let mut interval = splay.get_closed_interval(&x, &y);
+            interval.update_root_data(|d| {
+                d.value += k;
+                d.lazy += k;
+            });
+        }
+        fn point_query(splay: &mut Splay<SplayData>, x: i32) -> i32 {
+            assert!(splay.find(&x));
+            splay.root_data().unwrap().value
+        }
+        let mut splay = Splay::from_sorted(
+            vec![(1, 1), (2, 5), (3, 4), (4, 2), (5, 3)],
+            |(key, value)| SplayData {
+                key,
+                value,
+                lazy: 0,
+            },
+        );
+        // 1, 5, 4, 2, 3
+        interval_add(&mut splay, 2, 4, 2);
+        // 1, 7, 6, 4, 3
+        assert_eq!(point_query(&mut splay, 3), 6);
+        interval_add(&mut splay, 1, 5, -1);
+        // 0, 6, 5, 3, 2
+        interval_add(&mut splay, 3, 5, 7);
+        // 0, 6, 12, 10, 9
+        assert_eq!(point_query(&mut splay, 4), 10);
+    }
 }
