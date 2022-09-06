@@ -154,4 +154,67 @@ mod tests {
         // 0, 6, 12, 10, 9
         assert_eq!(point_query(&mut splay, 4), 10);
     }
+
+    #[test]
+    fn luogu_1428() {
+        struct SplayData {
+            key: u8,
+            cnt: u8,
+            scnt: u8,
+        }
+        impl BasicOps for SplayData {
+            type KeyType = u8;
+            fn key(&self) -> &Self::KeyType {
+                &self.key
+            }
+            fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
+                self.scnt = self.cnt;
+                if let Some(c) = lc {
+                    self.scnt += c.scnt;
+                }
+                if let Some(c) = rc {
+                    self.scnt += c.scnt;
+                }
+            }
+        }
+        impl WithKey for SplayData {
+            fn with_key(key: Self::KeyType) -> Self {
+                SplayData {
+                    key,
+                    cnt: 1,
+                    scnt: 1,
+                }
+            }
+        }
+        impl Count for SplayData {
+            type CountType = u8;
+            fn cnt(&self) -> &Self::CountType {
+                &self.cnt
+            }
+        }
+        impl CountAdd for SplayData {
+            fn cnt_add(&mut self, delta: &Self::CountType) {
+                self.cnt += delta;
+            }
+        }
+        fn num_less_than(splay: &mut Splay<SplayData>, x: u8) -> u8 {
+            match splay.to_interval().get_interval_lt(&x).root_data() {
+                Some(d) => d.scnt,
+                None => 0,
+            }
+        }
+        let mut splay = Splay::<SplayData>::new();
+        assert_eq!(num_less_than(&mut splay, 4), 0);
+        splay.insert_owned_key_or_inc_cnt(4);
+        assert_eq!(num_less_than(&mut splay, 3), 0);
+        splay.insert_owned_key_or_inc_cnt(3);
+        assert_eq!(num_less_than(&mut splay, 0), 0);
+        splay.insert_owned_key_or_inc_cnt(0);
+        assert_eq!(num_less_than(&mut splay, 5), 3);
+        splay.insert_owned_key_or_inc_cnt(5);
+        assert_eq!(num_less_than(&mut splay, 1), 1);
+        splay.insert_owned_key_or_inc_cnt(1);
+        assert_eq!(num_less_than(&mut splay, 2), 2);
+        splay.insert_owned_key_or_inc_cnt(2);
+    }
 }

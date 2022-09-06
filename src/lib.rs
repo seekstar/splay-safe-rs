@@ -180,6 +180,9 @@ impl<'a, T: BasicOps> Interval<'a, T> {
     fn consume(self) -> &'a mut Option<Box<Node<T>>> {
         self.rt
     }
+    pub fn root_data(&self) -> Option<&T> {
+        self.rt.as_ref().map(|rt| &rt.d)
+    }
     // Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
     where
@@ -279,41 +282,79 @@ impl<'a, T: BasicOps> Interval<'a, T> {
         self.find_first_le_or_ge(key, true)
     }
 
-    fn path_to_first_less_or_greater<const GREATER: bool>(
+    fn path_to_first_less_or_greater<const GT: bool>(
         &mut self,
         key: &T::KeyType,
     ) -> (Vec<(Box<Node<T>>, bool)>, usize) {
         let mut next = self.rt.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
-        let go_right = if GREATER {
-            T::KeyType::le
-        } else {
-            T::KeyType::lt
-        };
+        let go_right = if GT { T::KeyType::le } else { T::KeyType::lt };
         while let Some(mut cur) = next {
             let side = go_right(cur.d.key(), key);
             next = cur.take_child(side);
             path.push((cur, side));
-            if side != GREATER {
+            if side != GT {
                 ans_depth = path.len();
             }
         }
         (path, ans_depth)
     }
-    fn find_first_less_or_greater<const GREATER: bool>(
+    fn find_first_lt_or_gt<const GT: bool>(
         &mut self,
         key: &T::KeyType,
     ) -> bool {
-        let (path, ans_depth) =
-            self.path_to_first_less_or_greater::<GREATER>(key);
+        let (path, ans_depth) = self.path_to_first_less_or_greater::<GT>(key);
         self.rotate_ans_to_root(path, ans_depth)
     }
-    fn find_first_less(&mut self, key: &T::KeyType) -> bool {
-        self.find_first_less_or_greater::<false>(key)
+    fn find_first_lt(&mut self, key: &T::KeyType) -> bool {
+        self.find_first_lt_or_gt::<false>(key)
     }
-    fn find_first_greater(&mut self, key: &T::KeyType) -> bool {
-        self.find_first_less_or_greater::<true>(key)
+    fn find_first_gt(&mut self, key: &T::KeyType) -> bool {
+        self.find_first_lt_or_gt::<true>(key)
+    }
+
+    fn get_interval_lt_or_gt(
+        mut self,
+        key: &T::KeyType,
+        gt: bool,
+    ) -> Interval<'a, T> {
+        let found = self.find_first_le_or_ge(key, !gt);
+        if found {
+            let rt = self.rt.as_mut().unwrap();
+            Interval::from(&mut rt.c[gt as usize])
+        } else {
+            self
+        }
+    }
+    pub fn get_interval_lt(self, key: &T::KeyType) -> Interval<'a, T> {
+        self.get_interval_lt_or_gt(key, false)
+    }
+    fn get_interval_gt(self, key: &T::KeyType) -> Interval<'a, T> {
+        self.get_interval_lt_or_gt(key, true)
+    }
+
+    fn get_interval_le_or_ge<const GE: bool>(
+        mut self,
+        key: &T::KeyType,
+    ) -> Interval<'a, T> {
+        let found = if GE {
+            self.find_first_lt(key)
+        } else {
+            self.find_first_gt(key)
+        };
+        if found {
+            let rt = self.rt.as_mut().unwrap();
+            Interval::from(&mut rt.c[GE as usize])
+        } else {
+            self
+        }
+    }
+    fn get_interval_le(self, key: &T::KeyType) -> Interval<'a, T> {
+        self.get_interval_le_or_ge::<false>(key)
+    }
+    fn get_interval_ge(self, key: &T::KeyType) -> Interval<'a, T> {
+        self.get_interval_le_or_ge::<true>(key)
     }
 }
 
@@ -444,7 +485,7 @@ impl<T: BasicOps> Splay<T> {
         debug_assert!(v.is_empty());
         Splay { root }
     }
-    fn to_interval(&mut self) -> Interval<T> {
+    pub fn to_interval(&mut self) -> Interval<T> {
         Interval { rt: &mut self.root }
     }
     fn __rotate_to_root(
@@ -661,36 +702,18 @@ impl<T: BasicOps> Splay<T> {
         left: &T::KeyType,
         right: &T::KeyType,
     ) -> Interval<T> {
-        let mut interval = self.to_interval();
-        let found = interval.find_first_le(left);
-        if found {
-            let rt = interval.rt.as_mut().unwrap();
-            interval = Interval::from(&mut rt.c[1]);
-        }
-        let found = interval.find_first_ge(right);
-        if found {
-            let rt = interval.rt.as_mut().unwrap();
-            interval = Interval::from(&mut rt.c[0]);
-        }
-        interval
+        self.to_interval()
+            .get_interval_gt(left)
+            .get_interval_lt(right)
     }
     pub fn get_closed_interval(
         &mut self,
         left: &T::KeyType,
         right: &T::KeyType,
     ) -> Interval<T> {
-        let mut interval = self.to_interval();
-        let found = interval.find_first_less(left);
-        if found {
-            let rt = interval.rt.as_mut().unwrap();
-            interval = Interval::from(&mut rt.c[1]);
-        }
-        let found = interval.find_first_greater(right);
-        if found {
-            let rt = interval.rt.as_mut().unwrap();
-            interval = Interval::from(&mut rt.c[0]);
-        }
-        interval
+        self.to_interval()
+            .get_interval_ge(left)
+            .get_interval_le(right)
     }
 
     pub fn query_in_open_interval(
