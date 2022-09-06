@@ -2,9 +2,8 @@ mod tests;
 
 use num_traits::{One, Zero};
 
-use std::ops::Add;
-use std::ops::SubAssign;
-use std::{cmp::Ordering, ops::AddAssign};
+use core::cmp::Ordering;
+use core::ops::{Add, AddAssign, SubAssign};
 
 pub trait BasicOps {
     type KeyType: Ord;
