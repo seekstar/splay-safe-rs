@@ -180,6 +180,9 @@ impl<'a, T: BasicOps> Interval<'a, T> {
     fn consume(self) -> &'a mut Option<Box<Node<T>>> {
         self.rt
     }
+    pub fn delete(&mut self) {
+        self.rt.take();
+    }
     pub fn root_data(&self) -> Option<&T> {
         self.rt.as_ref().map(|rt| &rt.d)
     }

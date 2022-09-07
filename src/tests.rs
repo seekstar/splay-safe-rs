@@ -153,6 +153,37 @@ mod tests {
         interval_add(&mut splay, 3, 5, 7);
         // 0, 6, 12, 10, 9
         assert_eq!(point_query(&mut splay, 4), 10);
+
+        // Additional
+        let interval = splay.get_closed_interval(&6, &6);
+        assert!(interval.root_data().is_none());
+        let interval = splay.get_closed_interval(&0, &0);
+        assert!(interval.root_data().is_none());
+        let mut interval = splay.get_closed_interval(&2, &2);
+        interval.delete();
+        // (1, 0), (3, 12), (4, 10), (5, 9)
+        assert_eq!(
+            splay
+                .collect_data()
+                .iter()
+                .map(|x| (x.key, x.value))
+                .collect::<Vec<_>>(),
+            vec![(1, 0), (3, 12), (4, 10), (5, 9)],
+        );
+        let mut interval = splay.get_closed_interval(&3, &4);
+        interval.delete();
+        // (1, 0), (5, 9)
+        assert_eq!(
+            splay
+                .collect_data()
+                .iter()
+                .map(|x| (x.key, x.value))
+                .collect::<Vec<_>>(),
+            vec![(1, 0), (5, 9)],
+        );
+        let mut interval = splay.get_closed_interval(&0, &6);
+        interval.delete();
+        assert!(splay.collect_data().is_empty());
     }
 
     #[test]
