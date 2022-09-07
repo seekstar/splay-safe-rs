@@ -180,11 +180,18 @@ impl<'a, T: BasicOps> Interval<'a, T> {
     fn consume(self) -> &'a mut Option<Box<Node<T>>> {
         self.rt
     }
+    // Not tested by OJ
     pub fn delete(&mut self) {
         self.rt.take();
     }
     pub fn root_data(&self) -> Option<&T> {
         self.rt.as_ref().map(|rt| &rt.d)
+    }
+    // Not tested by OJ
+    pub fn collect_data(&self) -> Vec<&T> {
+        let mut elems = Vec::new();
+        collect_subtree_data(&self.rt, &mut elems);
+        elems
     }
     // Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
