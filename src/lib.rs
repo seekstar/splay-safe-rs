@@ -7,7 +7,7 @@
 mod tests;
 
 use num_traits::{One, Zero};
-use compare::Compare;
+pub use compare::Compare;
 
 use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, SubAssign};
