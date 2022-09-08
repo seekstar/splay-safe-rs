@@ -2,7 +2,7 @@
 mod tests {
     use std::vec;
 
-    use crate::{BasicOps, Count, CountAdd, CountSub, Splay, WithKey};
+    use crate::{BasicOps, Count, CountAdd, CountSub, Splay, Key, SplayWithKey};
 
     #[test]
     fn luogu_1090() {
@@ -11,15 +11,16 @@ mod tests {
             cnt: u32,
         }
         impl BasicOps for SplayData {
-            type KeyType = i32;
-            fn key(&self) -> &Self::KeyType {
-                &self.key
-            }
             fn push_up(&mut self, _: Option<&Self>, _: Option<&Self>) {}
         }
-        impl WithKey for SplayData {
-            fn with_key(key: Self::KeyType) -> Self {
-                SplayData { key: key, cnt: 1 }
+        impl Key<i32> for SplayData {
+            fn key(&self) -> &i32 {
+                &self.key
+            }
+        }
+        impl From<i32> for SplayData {
+            fn from(key: i32) -> Self {
+                SplayData { key, cnt: 1 }
             }
         }
         impl Count for SplayData {
@@ -38,7 +39,7 @@ mod tests {
                 self.cnt -= delta;
             }
         }
-        let mut splay = Splay::<SplayData>::from(vec![1, 2, 9]);
+        let mut splay = SplayWithKey::<i32, SplayData>::from(vec![1, 2, 9]);
         assert_eq!(splay.query_smallest().unwrap().key(), &1);
         assert!(splay.deref_root());
         assert_eq!(splay.query_smallest().unwrap().key(), &2);
@@ -62,13 +63,14 @@ mod tests {
             value: i32,
         }
         impl BasicOps for SplayData {
-            type KeyType = i32;
-            fn key(&self) -> &Self::KeyType {
-                &self.key
-            }
             fn push_up(&mut self, _: Option<&Self>, _: Option<&Self>) {}
         }
-        let mut splay = Splay::new();
+        impl Key<i32> for SplayData {
+            fn key(&self) -> &i32 {
+                &self.key
+            }
+        }
+        let mut splay = SplayWithKey::<i32, SplayData>::new();
         assert!(splay
             .insert_owned_key_with_func(1, |key| SplayData { key, value: 1 }));
         assert!(splay
@@ -103,10 +105,6 @@ mod tests {
             lazy: i32,
         }
         impl BasicOps for SplayData {
-            type KeyType = i32;
-            fn key(&self) -> &Self::KeyType {
-                &self.key
-            }
             fn push_down(
                 &mut self,
                 lc: Option<&mut Self>,
@@ -125,18 +123,23 @@ mod tests {
                 }
             }
         }
-        fn interval_add(splay: &mut Splay<SplayData>, x: i32, y: i32, k: i32) {
+        impl Key<i32> for SplayData {
+            fn key(&self) -> &i32 {
+                &self.key
+            }
+        }
+        fn interval_add(splay: &mut SplayWithKey<i32, SplayData>, x: i32, y: i32, k: i32) {
             let mut interval = splay.get_closed_interval(&x, &y);
             interval.update_root_data(|d| {
                 d.value += k;
                 d.lazy += k;
             });
         }
-        fn point_query(splay: &mut Splay<SplayData>, x: i32) -> i32 {
+        fn point_query(splay: &mut SplayWithKey<i32, SplayData>, x: i32) -> i32 {
             assert!(splay.find(&x));
             splay.root_data().unwrap().value
         }
-        let mut splay = Splay::from_sorted(
+        let mut splay = Splay::from_with_constructor(
             vec![(1, 1), (2, 5), (3, 4), (4, 2), (5, 3)],
             |(key, value)| SplayData {
                 key,
@@ -220,10 +223,6 @@ mod tests {
             scnt: u8,
         }
         impl BasicOps for SplayData {
-            type KeyType = u8;
-            fn key(&self) -> &Self::KeyType {
-                &self.key
-            }
             fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
                 self.scnt = self.cnt;
                 if let Some(c) = lc {
@@ -234,8 +233,13 @@ mod tests {
                 }
             }
         }
-        impl WithKey for SplayData {
-            fn with_key(key: Self::KeyType) -> Self {
+        impl Key<u8> for SplayData {
+            fn key(&self) -> &u8 {
+                &self.key
+            }
+        }
+        impl From<u8> for SplayData {
+            fn from(key: u8) -> Self {
                 SplayData {
                     key,
                     cnt: 1,
@@ -254,13 +258,13 @@ mod tests {
                 self.cnt += delta;
             }
         }
-        fn num_less_than(splay: &mut Splay<SplayData>, x: u8) -> u8 {
+        fn num_less_than(splay: &mut SplayWithKey<u8, SplayData>, x: u8) -> u8 {
             match splay.to_interval().get_interval_lt(&x).root_data() {
                 Some(d) => d.scnt,
                 None => 0,
             }
         }
-        let mut splay = Splay::<SplayData>::new();
+        let mut splay = SplayWithKey::<u8, SplayData>::new();
         assert_eq!(num_less_than(&mut splay, 4), 0);
         splay.insert_owned_key_or_inc_cnt(4);
         assert_eq!(num_less_than(&mut splay, 3), 0);
