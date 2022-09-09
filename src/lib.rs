@@ -316,7 +316,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         self.find_first_le_or_ge(key, true)
     }
 
-    fn path_to_first_less_or_greater<const GT: bool, E>(
+    fn path_to_first_less_or_greater<E, const GT: bool>(
         &mut self,
         key: &E,
     ) -> (Vec<(Box<Node<T>>, bool)>, usize)
@@ -337,27 +337,27 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         }
         (path, ans_depth)
     }
-    fn find_first_lt_or_gt<const GT: bool, E>(
+    fn find_first_lt_or_gt<E, const GT: bool>(
         &mut self,
         key: &E,
     ) -> bool
     where
         S: Compare<T, E>,
     {
-        let (path, ans_depth) = self.path_to_first_less_or_greater::<GT, E>(key);
+        let (path, ans_depth) = self.path_to_first_less_or_greater::<E, GT>(key);
         self.rotate_ans_to_root(path, ans_depth)
     }
     fn find_first_lt<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
     {
-        self.find_first_lt_or_gt::<false, E>(key)
+        self.find_first_lt_or_gt::<E, false>(key)
     }
-    fn find_first_gt<E>(&mut self, key: &E) -> bool
+    pub fn find_first_gt<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
     {
-        self.find_first_lt_or_gt::<true, E>(key)
+        self.find_first_lt_or_gt::<E, true>(key)
     }
 
     fn get_interval_lt_or_gt<E>(
@@ -389,7 +389,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         self.get_interval_lt_or_gt(key, true)
     }
 
-    fn get_interval_le_or_ge<const GE: bool, E>(
+    fn get_interval_le_or_ge<E, const GE: bool>(
         mut self,
         key: &E,
     ) -> Interval<'a, T, S>
@@ -412,13 +412,13 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     where
         S: Compare<T, E>,
     {
-        self.get_interval_le_or_ge::<false, E>(key)
+        self.get_interval_le_or_ge::<E, false>(key)
     }
     fn get_interval_ge<E>(self, key: &E) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
     {
-        self.get_interval_le_or_ge::<true, E>(key)
+        self.get_interval_le_or_ge::<E, true>(key)
     }
 }
 
