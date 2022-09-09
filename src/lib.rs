@@ -6,12 +6,12 @@
 
 mod tests;
 
-use num_traits::{One, Zero};
 pub use compare::Compare;
+use num_traits::{One, Zero};
 
 use core::cmp::Ordering;
-use core::ops::{Add, AddAssign, SubAssign};
 use core::marker::PhantomData;
+use core::ops::{Add, AddAssign, SubAssign};
 
 pub trait BasicOps {
     #[allow(unused)]
@@ -183,7 +183,10 @@ pub struct Interval<'a, T, S> {
 }
 
 impl<'a, T, S> Interval<'a, T, S> {
-    fn new(rt: &'a mut Option<Box<Node<T>>>, shared: &'a S) -> Interval<'a, T, S> {
+    fn new(
+        rt: &'a mut Option<Box<Node<T>>>,
+        shared: &'a S,
+    ) -> Interval<'a, T, S> {
         Interval { rt, shared }
     }
 }
@@ -337,14 +340,12 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         }
         (path, ans_depth)
     }
-    fn find_first_lt_or_gt<E, const GT: bool>(
-        &mut self,
-        key: &E,
-    ) -> bool
+    fn find_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
     {
-        let (path, ans_depth) = self.path_to_first_less_or_greater::<E, GT>(key);
+        let (path, ans_depth) =
+            self.path_to_first_less_or_greater::<E, GT>(key);
         self.rotate_ans_to_root(path, ans_depth)
     }
     fn find_first_lt<E>(&mut self, key: &E) -> bool
@@ -471,7 +472,10 @@ pub struct Splay<T, S> {
 impl<T, S: Default> Splay<T, S> {
     // use Basic::C as CT;
     pub fn new() -> Splay<T, S> {
-        Splay { root: None, shared: S::default() }
+        Splay {
+            root: None,
+            shared: S::default(),
+        }
     }
 }
 
@@ -507,13 +511,19 @@ where
 }
 
 impl<T: BasicOps, S: Default> Splay<T, S> {
-    pub fn from_with_constructor<E, F>(mut v: Vec<E>, constructor: F) -> Splay<T, S>
+    pub fn from_with_constructor<E, F>(
+        mut v: Vec<E>,
+        constructor: F,
+    ) -> Splay<T, S>
     where
         F: Copy + Fn(E) -> T,
     {
         let root = build(&mut v, 0, constructor);
         debug_assert!(v.is_empty());
-        Splay { root, shared: S::default() }
+        Splay {
+            root,
+            shared: S::default(),
+        }
     }
 }
 
@@ -667,11 +677,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     // Otherwise, construct the data with `func`, insert the node, rotate
     // the new node to root, and return true.
     // Return whether the insertion is successful or not.
-    pub fn insert_owned_key_with_func<E, F>(
-        &mut self,
-        key: E,
-        func: F,
-    ) -> bool
+    pub fn insert_owned_key_with_func<E, F>(&mut self, key: E, func: F) -> bool
     where
         S: Compare<T, E>,
         F: FnOnce(E) -> T,
@@ -793,11 +799,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.root = Some(ans);
     }
 
-    fn get_open_interval<L, R>(
-        &mut self,
-        left: &L,
-        right: &R,
-    ) -> Interval<T, S>
+    fn get_open_interval<L, R>(&mut self, left: &L, right: &R) -> Interval<T, S>
     where
         S: Compare<T, L> + Compare<T, R>,
     {

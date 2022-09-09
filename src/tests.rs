@@ -8,7 +8,9 @@
 mod tests {
     use std::vec;
 
-    use crate::{BasicOps, Count, CountAdd, CountSub, Splay, Key, SplayWithKey};
+    use crate::{
+        BasicOps, Count, CountAdd, CountSub, Key, Splay, SplayWithKey,
+    };
 
     #[test]
     fn luogu_1090() {
@@ -134,14 +136,22 @@ mod tests {
                 &self.key
             }
         }
-        fn interval_add(splay: &mut SplayWithKey<i32, SplayData>, x: i32, y: i32, k: i32) {
+        fn interval_add(
+            splay: &mut SplayWithKey<i32, SplayData>,
+            x: i32,
+            y: i32,
+            k: i32,
+        ) {
             let mut interval = splay.get_closed_interval(&x, &y);
             interval.update_root_data(|d| {
                 d.value += k;
                 d.lazy += k;
             });
         }
-        fn point_query(splay: &mut SplayWithKey<i32, SplayData>, x: i32) -> i32 {
+        fn point_query(
+            splay: &mut SplayWithKey<i32, SplayData>,
+            x: i32,
+        ) -> i32 {
             assert!(splay.find(&x));
             splay.root_data().unwrap().value
         }
