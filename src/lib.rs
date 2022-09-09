@@ -953,7 +953,7 @@ impl<T: BasicOps + std::fmt::Display, S> Splay<T, S> {
     }
 }
 
-struct KeyComparator<K>(PhantomData<K>);
+pub struct KeyComparator<K>(PhantomData<K>);
 
 impl<T> Default for KeyComparator<T> {
     fn default() -> Self {
@@ -967,7 +967,7 @@ impl<K: Ord, L: Key<K>, R: Key<K>> Compare<L, R> for KeyComparator<K> {
     }
 }
 
-type SplayWithKey<K, T> = Splay<T, KeyComparator<K>>;
+pub type SplayWithKey<K, T> = Splay<T, KeyComparator<K>>;
 
 // Example
 struct RankTreeData<T: Ord> {
