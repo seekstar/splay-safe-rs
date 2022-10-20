@@ -510,20 +510,33 @@ where
     Some(node)
 }
 
-impl<T: BasicOps, S: Default> Splay<T, S> {
-    pub fn from_with_constructor<E, F>(
+impl<T: BasicOps, S> Splay<T, S> {
+    fn from_with_constructor_shared<E, F>(
         mut v: Vec<E>,
         constructor: F,
+        s: S,
     ) -> Splay<T, S>
     where
         F: Copy + Fn(E) -> T,
     {
         let root = build(&mut v, 0, constructor);
         debug_assert!(v.is_empty());
-        Splay {
-            root,
-            shared: S::default(),
-        }
+        Splay { root, shared: s }
+    }
+    pub fn from_with_shared<E>(v: Vec<E>, s: S) -> Splay<T, S>
+    where
+        T: From<E>,
+    {
+        Self::from_with_constructor_shared(v, T::from, s)
+    }
+}
+
+impl<T: BasicOps, S: Default> Splay<T, S> {
+    pub fn from_with_constructor<E, F>(v: Vec<E>, constructor: F) -> Splay<T, S>
+    where
+        F: Copy + Fn(E) -> T,
+    {
+        Self::from_with_constructor_shared(v, constructor, S::default())
     }
 }
 

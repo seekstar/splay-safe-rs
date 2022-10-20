@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "splay-safe-rs"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "compare",
  "num-traits",
