@@ -13,6 +13,56 @@ mod tests {
     };
 
     #[test]
+    fn luogu_1503() {
+        struct SplayData {
+            key: u32,
+        }
+        impl Key<u32> for SplayData {
+            fn key(&self) -> &u32 {
+                &self.key
+            }
+        }
+        impl BasicOps for SplayData {}
+        let mut destroyed = Vec::new();
+        let mut splay = SplayWithKey::<u32, SplayData>::new();
+        let n = 7;
+        let d =
+            |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>, x| {
+                destroyed.push(x);
+                splay.insert_owned_key_with_func(x, |x| SplayData { key: x });
+            };
+        let r = |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>| {
+            let x = destroyed.pop().unwrap();
+            splay.delete(&x);
+        };
+        let q = |splay: &mut SplayWithKey<u32, SplayData>, x, expected| {
+            let found = splay.find_first_le(&x);
+            let begin = if found {
+                splay.root_data().unwrap().key + 1
+            } else {
+                1
+            };
+            let found = splay.find_first_ge(&x);
+            let end = if found {
+                splay.root_data().unwrap().key
+            } else {
+                n + 1
+            };
+            let ans = if end <= begin { 0 } else { end - begin };
+            assert_eq!(ans, expected);
+        };
+        d(&mut splay, &mut destroyed, 3);
+        d(&mut splay, &mut destroyed, 6);
+        d(&mut splay, &mut destroyed, 5);
+        q(&mut splay, 4, 1);
+        q(&mut splay, 5, 0);
+        r(&mut splay, &mut destroyed);
+        q(&mut splay, 4, 2);
+        r(&mut splay, &mut destroyed);
+        q(&mut splay, 4, 4);
+    }
+
+    #[test]
     fn luogu_1090() {
         struct SplayData {
             key: i32,
