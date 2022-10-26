@@ -9,13 +9,32 @@ mod tests {
     use std::vec;
 
     use crate::{
-        BasicOps, Count, CountAdd, CountSub, Key, Splay, SplayWithKey,
+        BasicOps, Count, CountAdd, CountSub, Key, RankTree, Splay, SplayWithKey,
     };
+
+    #[test]
+    fn luogu_1486() {
+        let mut splay = RankTree::<i32>::new();
+        splay.insert(60);
+        splay.insert(70);
+        assert_eq!(splay.size(), 2);
+        assert_eq!(splay.query_kth(1), Some(&60));
+        splay.insert(80);
+        splay.del_smaller(&75);
+        assert_eq!(splay.size(), 1);
+        assert_eq!(splay.query_kth(1), Some(&80));
+        assert_eq!(splay.query_kth(2), None);
+    }
 
     #[test]
     fn luogu_1503() {
         struct SplayData {
             key: u32,
+        }
+        impl From<u32> for SplayData {
+            fn from(key: u32) -> Self {
+                Self { key }
+            }
         }
         impl Key<u32> for SplayData {
             fn key(&self) -> &u32 {
@@ -29,7 +48,7 @@ mod tests {
         let d =
             |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>, x| {
                 destroyed.push(x);
-                splay.insert_owned_key_with_func(x, |x| SplayData { key: x });
+                splay.insert_owned_key(x);
             };
         let r = |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>| {
             let x = destroyed.pop().unwrap();
