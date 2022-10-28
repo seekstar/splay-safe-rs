@@ -312,7 +312,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     {
         self.find_first_le_or_ge(key, false)
     }
-    fn find_first_ge<E>(&mut self, key: &E) -> bool
+    pub fn find_first_ge<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
     {
