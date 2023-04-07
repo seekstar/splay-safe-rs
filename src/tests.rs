@@ -247,16 +247,15 @@ mod tests {
         assert!(interval.collect_data().is_empty());
         let interval = splay.get_closed_interval(&0, &0);
         assert!(interval.collect_data().is_empty());
-        let mut interval = splay.get_closed_interval(&2, &2);
+        let interval = splay.get_closed_interval(&2, &2);
         assert_eq!(
             interval
-                .collect_data()
+                .take_all_data()
                 .iter()
                 .map(|x| (x.key, x.value))
                 .collect::<Vec<_>>(),
             vec![(2, 6)],
         );
-        interval.delete();
         // (1, 0), (3, 12), (4, 10), (5, 9)
         assert_eq!(
             splay
@@ -267,16 +266,15 @@ mod tests {
             vec![(1, 0), (3, 12), (4, 10), (5, 9)],
         );
 
-        let mut interval = splay.get_closed_interval(&3, &4);
+        let interval = splay.get_closed_interval(&3, &4);
         assert_eq!(
             interval
-                .collect_data()
+                .take_all_data()
                 .iter()
                 .map(|x| (x.key, x.value))
                 .collect::<Vec<_>>(),
             vec![(3, 12), (4, 10)],
         );
-        interval.delete();
         // (1, 0), (5, 9)
         assert_eq!(
             splay
@@ -287,16 +285,15 @@ mod tests {
             vec![(1, 0), (5, 9)],
         );
 
-        let mut interval = splay.get_closed_interval(&0, &6);
+        let interval = splay.get_closed_interval(&0, &6);
         assert_eq!(
             interval
-                .collect_data()
+                .take_all_data()
                 .iter()
                 .map(|x| (x.key, x.value))
                 .collect::<Vec<_>>(),
             vec![(1, 0), (5, 9)],
         );
-        interval.delete();
         assert!(splay.collect_data().is_empty());
     }
 

@@ -208,6 +208,11 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         collect_subtree_data(&self.rt, &mut elems);
         elems
     }
+    pub fn take_all_data(self) -> Vec<T> {
+        let mut elems = Vec::new();
+        take_subtree_data(self.rt.take(), &mut elems);
+        elems
+    }
     // Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
     where
