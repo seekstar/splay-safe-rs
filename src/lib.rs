@@ -800,6 +800,31 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.to_interval().find_first_ge(key)
     }
 
+    fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
+    where
+        S: Compare<T, E>,
+    {
+        let found = self.to_interval().find_first_le_or_ge(key, ge);
+        if !found {
+            return None;
+        }
+        let ret = self.root_data();
+        assert!(ret.is_some());
+        ret
+    }
+    pub fn query_first_le<E>(&mut self, key: &E) -> Option<&T>
+    where
+        S: Compare<T, E>,
+    {
+        self.query_first_le_or_ge(key, false)
+    }
+    pub fn query_first_ge<E>(&mut self, key: &E) -> Option<&T>
+    where
+        S: Compare<T, E>,
+    {
+        self.query_first_le_or_ge(key, true)
+    }
+
     // The remaining smallest will be the root.
     pub fn del_smaller<E>(&mut self, key: &E)
     where

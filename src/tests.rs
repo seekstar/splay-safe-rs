@@ -55,17 +55,13 @@ mod tests {
             splay.delete(&x);
         };
         let q = |splay: &mut SplayWithKey<u32, SplayData>, x, expected| {
-            let found = splay.find_first_le(&x);
-            let begin = if found {
-                splay.root_data().unwrap().key + 1
-            } else {
-                1
+            let begin = match splay.query_first_le(&x) {
+                Some(d) => d.key + 1,
+                None => 1,
             };
-            let found = splay.find_first_ge(&x);
-            let end = if found {
-                splay.root_data().unwrap().key
-            } else {
-                n + 1
+            let end = match splay.query_first_ge(&x) {
+                Some(d) => d.key,
+                None => n + 1,
             };
             let ans = if end <= begin { 0 } else { end - begin };
             assert_eq!(ans, expected);
