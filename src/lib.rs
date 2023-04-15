@@ -691,6 +691,19 @@ impl<T: BasicOps, S> Splay<T, S> {
             }
         }
     }
+    // Return successful or not.
+    pub fn insert<E>(&mut self, key: &E, data: T) -> bool
+    where
+        S: Compare<T, E>,
+    {
+        let path = match self.find_insert_location(key) {
+            Some(path) => path,
+            None => return false,
+        };
+        let node = Box::new(Node::new(data));
+        self.__rotate_to_root(node, path);
+        return true;
+    }
     // If the key already exists, then make it the root and return false.
     // Otherwise, construct the data with `func`, insert the node, rotate
     // the new node to root, and return true.
@@ -708,6 +721,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.__rotate_to_root(node, path);
         return true;
     }
+    // Return succeed or not.
     pub fn insert_owned_key<E>(&mut self, key: E) -> bool
     where
         S: Compare<T, E>,
@@ -823,6 +837,31 @@ impl<T: BasicOps, S> Splay<T, S> {
         S: Compare<T, E>,
     {
         self.query_first_le_or_ge(key, true)
+    }
+
+    fn query_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> Option<&T>
+    where
+        S: Compare<T, E>,
+    {
+        let found = self.to_interval().find_first_lt_or_gt::<E, GT>(key);
+        if !found {
+            return None;
+        }
+        let ret = self.root_data();
+        assert!(ret.is_some());
+        ret
+    }
+    pub fn query_first_lt<E>(&mut self, key: &E) -> Option<&T>
+    where
+        S: Compare<T, E>,
+    {
+        self.query_first_lt_or_gt::<E, false>(key)
+    }
+    pub fn query_first_gt<E>(&mut self, key: &E) -> Option<&T>
+    where
+        S: Compare<T, E>,
+    {
+        self.query_first_lt_or_gt::<E, true>(key)
     }
 
     // The remaining smallest will be the root.

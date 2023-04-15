@@ -1,6 +1,6 @@
 [package]
 name = "splay-safe-rs"
-version = "0.6.7"
+version = "0.6.8"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 num-traits = "0.2"
 compare = "0.1"
+rand = "0.8"

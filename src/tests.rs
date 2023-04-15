@@ -5,9 +5,196 @@
  */
 
 #[cfg(test)]
-mod tests {
-    use std::vec;
+mod rand_tests {
+    use rand::distributions::{Distribution, Uniform};
+    use rand::rngs::StdRng;
+    use rand::Rng;
+    use rand::SeedableRng;
+    use std::collections::BTreeMap;
+    use std::ops::Bound::{Excluded, Unbounded};
 
+    use crate::{BasicOps, Key, SplayWithKey};
+
+    fn rand_digits<R: Rng>(rng: &mut R, num: usize) -> Vec<u8> {
+        let dist = Uniform::new(b'0', b'9' + 1);
+        let mut ret = Vec::with_capacity(num);
+        for _ in 0..num {
+            ret.push(dist.sample(rng));
+        }
+        ret
+    }
+
+    struct Env<'a, 'b, 'c, K, T> {
+        rng: &'a mut StdRng,
+        splay: &'b mut SplayWithKey<K, T>,
+        btree: &'c mut BTreeMap<K, T>,
+        key_len: usize,
+        val_len: usize,
+    }
+    struct OpNum {
+        insert: usize,
+        query_first_lt: usize,
+        query_first_gt: usize,
+    }
+    impl Default for OpNum {
+        fn default() -> OpNum {
+            OpNum {
+                insert: 0,
+                query_first_lt: 0,
+                query_first_gt: 0,
+            }
+        }
+    }
+    fn try_insert<'a, 'b, 'c, K, T>(
+        env: &mut Env<'a, 'b, 'c, K, T>,
+        key: K,
+        value: T,
+    ) where
+        K: Ord + Clone,
+        T: BasicOps + Key<K> + Clone,
+    {
+        let mut std_exists = false;
+        let succeed = env.splay.insert(&key, value.clone());
+        env.btree
+            .entry(key.clone())
+            .and_modify(|_| std_exists = true)
+            .or_insert_with(|| {
+                std_exists = false;
+                value
+            });
+        assert_eq!(std_exists, !succeed);
+    }
+    fn query_first_lt<'a, 'b, 'c, K, T>(
+        env: &mut Env<'a, 'b, 'c, K, T>,
+        key: &K,
+    ) where
+        K: Ord + Clone + std::fmt::Debug,
+        T: BasicOps + Key<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
+    {
+        let std_ret = env.btree.range((Unbounded, Excluded(key))).next_back();
+        let ret = env.splay.query_first_lt(key);
+        if let Some((key, value)) = std_ret {
+            assert!(ret.is_some());
+            let ret = ret.unwrap();
+            assert_eq!(ret.key(), key);
+            assert_eq!(ret, value);
+        } else {
+            assert!(ret.is_none());
+        }
+    }
+    fn query_first_gt<'a, 'b, 'c, K, T>(
+        env: &mut Env<'a, 'b, 'c, K, T>,
+        key: &K,
+    ) where
+        K: Ord + Clone + std::fmt::Debug,
+        T: BasicOps + Key<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
+    {
+        let std_ret = env.btree.range((Excluded(key), Unbounded)).next();
+        let ret = env.splay.query_first_gt(key);
+        if let Some((key, value)) = std_ret {
+            assert!(ret.is_some());
+            let ret = ret.unwrap();
+            assert_eq!(ret.key(), key);
+            assert_eq!(ret, value);
+        } else {
+            assert!(ret.is_none());
+        }
+    }
+    fn rand_op(mut num: OpNum, key_len: usize, val_len: usize) {
+        #[derive(Clone, Debug, PartialEq)]
+        struct SplayData {
+            key: Vec<u8>,
+            value: Vec<u8>,
+        }
+        impl Key<Vec<u8>> for SplayData {
+            fn key(&self) -> &Vec<u8> {
+                &self.key
+            }
+        }
+        impl BasicOps for SplayData {}
+        let mut rng = StdRng::seed_from_u64(233);
+        let mut splay = SplayWithKey::<Vec<u8>, SplayData>::new();
+        let mut btree = BTreeMap::<Vec<u8>, SplayData>::new();
+        let mut env = Env {
+            rng: &mut rng,
+            splay: &mut splay,
+            btree: &mut btree,
+            key_len,
+            val_len,
+        };
+        let mut tot = num.insert + num.query_first_lt + num.query_first_gt;
+        while tot > 0 {
+            let op_dist = Uniform::from(0..tot);
+            let mut rand_num = op_dist.sample(env.rng);
+            if rand_num < num.insert {
+                num.insert -= 1;
+                tot -= 1;
+                let data = SplayData {
+                    key: rand_digits(env.rng, env.key_len),
+                    value: rand_digits(env.rng, env.val_len),
+                };
+                try_insert(&mut env, data.key.clone(), data);
+                continue;
+            }
+            rand_num -= num.insert;
+            if rand_num < num.query_first_lt {
+                num.query_first_lt -= 1;
+                tot -= 1;
+                let key = rand_digits(env.rng, env.key_len);
+                query_first_lt(&mut env, &key);
+                continue;
+            }
+            rand_num -= num.query_first_lt;
+            if rand_num < num.query_first_gt {
+                num.query_first_gt -= 1;
+                tot -= 1;
+                let key = rand_digits(env.rng, env.key_len);
+                query_first_gt(&mut env, &key);
+                continue;
+            }
+            // rand_num -= num.query_first_gt;
+            unreachable!();
+        }
+        assert_eq!(num.insert, 0);
+        assert_eq!(num.query_first_lt, 0);
+        assert_eq!(num.query_first_gt, 0);
+    }
+    fn rand_insert_query_first_lt_or_gt(magnitude: usize) {
+        let n = 10usize.pow(magnitude as u32);
+        rand_op(
+            OpNum {
+                insert: n,
+                query_first_lt: n,
+                query_first_gt: n,
+            },
+            magnitude,
+            magnitude,
+        );
+    }
+    #[test]
+    fn rand_insert_query_first_lt_or_gt_1e1() {
+        rand_insert_query_first_lt_or_gt(1);
+    }
+    #[test]
+    fn rand_insert_query_first_lt_or_gt_1e2() {
+        rand_insert_query_first_lt_or_gt(2);
+    }
+    #[test]
+    fn rand_insert_query_first_lt_or_gt_1e3() {
+        rand_insert_query_first_lt_or_gt(3);
+    }
+    #[test]
+    fn rand_insert_query_first_lt_or_gt_1e4() {
+        rand_insert_query_first_lt_or_gt(4);
+    }
+    #[test]
+    fn rand_insert_query_first_lt_or_gt_1e5() {
+        rand_insert_query_first_lt_or_gt(5);
+    }
+}
+
+#[cfg(test)]
+mod online_judge {
     use crate::{
         BasicOps, Count, CountAdd, CountSub, Key, RankTree, Splay, SplayWithKey,
     };
