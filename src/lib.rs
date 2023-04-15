@@ -253,6 +253,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     ) -> (Vec<(Box<Node<T>>, bool)>, usize)
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let mut next = self.rt.take();
         let mut path = Vec::new();
@@ -307,6 +308,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     fn find_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
         self.rotate_ans_to_root(path, ans_depth)
@@ -314,12 +316,14 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     fn find_first_le<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.find_first_le_or_ge(key, false)
     }
     pub fn find_first_ge<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.find_first_le_or_ge(key, true)
     }
@@ -330,6 +334,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     ) -> (Vec<(Box<Node<T>>, bool)>, usize)
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let mut next = self.rt.take();
         let mut path = Vec::new();
@@ -348,6 +353,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     fn find_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let (path, ans_depth) =
             self.path_to_first_less_or_greater::<E, GT>(key);
@@ -356,12 +362,14 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     fn find_first_lt<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.find_first_lt_or_gt::<E, false>(key)
     }
     pub fn find_first_gt<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.find_first_lt_or_gt::<E, true>(key)
     }
@@ -373,6 +381,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     ) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let found = self.find_first_le_or_ge(key, !gt);
         if found {
@@ -385,12 +394,14 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     pub fn get_interval_lt<E>(self, key: &E) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.get_interval_lt_or_gt(key, false)
     }
     fn get_interval_gt<E>(self, key: &E) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.get_interval_lt_or_gt(key, true)
     }
@@ -401,6 +412,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     ) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let found = if GE {
             self.find_first_lt(key)
@@ -417,12 +429,14 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     fn get_interval_le<E>(self, key: &E) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.get_interval_le_or_ge::<E, false>(key)
     }
     fn get_interval_ge<E>(self, key: &E) -> Interval<'a, T, S>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.get_interval_le_or_ge::<E, true>(key)
     }
@@ -667,6 +681,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     ) -> Option<Vec<(Box<Node<T>>, bool)>>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let mut path = Vec::new();
         let mut cur = match self.root.take() {
@@ -695,6 +710,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn insert<E>(&mut self, key: &E, data: T) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let path = match self.find_insert_location(key) {
             Some(path) => path,
@@ -743,6 +759,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn find<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let mut next = self.root.take();
         let mut path = Vec::new();
@@ -768,6 +785,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn delete<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let ret = self.find(key);
         if ret {
@@ -804,12 +822,14 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn find_first_le<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.to_interval().find_first_le(key)
     }
     pub fn find_first_ge<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.to_interval().find_first_ge(key)
     }
@@ -817,6 +837,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let found = self.to_interval().find_first_le_or_ge(key, ge);
         if !found {
@@ -829,12 +850,14 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn query_first_le<E>(&mut self, key: &E) -> Option<&T>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.query_first_le_or_ge(key, false)
     }
     pub fn query_first_ge<E>(&mut self, key: &E) -> Option<&T>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.query_first_le_or_ge(key, true)
     }
@@ -842,6 +865,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     fn query_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> Option<&T>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let found = self.to_interval().find_first_lt_or_gt::<E, GT>(key);
         if !found {
@@ -854,12 +878,14 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn query_first_lt<E>(&mut self, key: &E) -> Option<&T>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.query_first_lt_or_gt::<E, false>(key)
     }
     pub fn query_first_gt<E>(&mut self, key: &E) -> Option<&T>
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         self.query_first_lt_or_gt::<E, true>(key)
     }
@@ -868,6 +894,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     pub fn del_smaller<E>(&mut self, key: &E)
     where
         S: Compare<T, E>,
+        E: ?Sized,
     {
         let (mut path, ans_depth) =
             self.to_interval().path_to_first_le_or_ge(key, true);
