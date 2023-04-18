@@ -793,6 +793,18 @@ impl<T: BasicOps, S> Splay<T, S> {
         }
         return ret;
     }
+    pub fn remove<E>(&mut self, key: &E) -> Option<T>
+    where
+        S: Compare<T, E>,
+        E: ?Sized,
+    {
+        let ret = self.find(key);
+        if ret {
+            Some(self.take_root().unwrap().d)
+        } else {
+            None
+        }
+    }
 
     fn find_smallest_or_largest(&mut self, is_largest: bool) {
         let mut path = Vec::new();

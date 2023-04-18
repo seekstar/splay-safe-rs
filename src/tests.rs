@@ -239,7 +239,7 @@ mod online_judge {
             };
         let r = |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>| {
             let x = destroyed.pop().unwrap();
-            splay.delete(&x);
+            splay.remove(&x);
         };
         let q = |splay: &mut SplayWithKey<u32, SplayData>, x, expected| {
             let begin = match splay.query_first_le(&x) {
