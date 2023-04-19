@@ -923,6 +923,8 @@ impl<T: BasicOps, S> Splay<T, S> {
     fn get_open_interval<L, R>(&mut self, left: &L, right: &R) -> Interval<T, S>
     where
         S: Compare<T, L> + Compare<T, R>,
+        L: ?Sized,
+        R: ?Sized,
     {
         self.to_interval()
             .get_interval_gt(left)
@@ -935,6 +937,8 @@ impl<T: BasicOps, S> Splay<T, S> {
     ) -> Interval<T, S>
     where
         S: Compare<T, L> + Compare<T, R>,
+        L: ?Sized,
+        R: ?Sized,
     {
         self.to_interval()
             .get_interval_ge(left)
@@ -948,6 +952,8 @@ impl<T: BasicOps, S> Splay<T, S> {
     ) -> Option<&T>
     where
         S: Compare<T, L> + Compare<T, R>,
+        L: ?Sized,
+        R: ?Sized,
     {
         let interval = self.get_open_interval(left, right);
         interval.consume().as_ref().map(|x| &x.d)
