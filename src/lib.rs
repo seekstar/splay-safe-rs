@@ -12,6 +12,7 @@ use num_traits::{One, Zero};
 use core::cmp::Ordering;
 use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, SubAssign};
+use core::ops::{Bound, RangeBounds};
 
 pub trait BasicOps {
     #[allow(unused)]
@@ -943,6 +944,25 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.to_interval()
             .get_interval_ge(left)
             .get_interval_le(right)
+    }
+    pub fn range<E, Range>(&mut self, range: Range) -> Interval<T, S>
+    where
+        S: Compare<T, E>,
+        E: ?Sized,
+        Range: RangeBounds<E>,
+    {
+        let mut interval = self.to_interval();
+        match range.start_bound() {
+            Bound::Included(key) => interval = interval.get_interval_ge(key),
+            Bound::Excluded(key) => interval = interval.get_interval_gt(key),
+            Bound::Unbounded => {}
+        }
+        match range.end_bound() {
+            Bound::Included(key) => interval = interval.get_interval_le(key),
+            Bound::Excluded(key) => interval = interval.get_interval_lt(key),
+            Bound::Unbounded => {}
+        }
+        interval
     }
 
     pub fn query_in_open_interval<L, R>(

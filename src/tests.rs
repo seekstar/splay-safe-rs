@@ -10,8 +10,10 @@ mod rand_tests {
     use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
+    use std::cmp::Ordering;
     use std::collections::BTreeMap;
-    use std::ops::Bound::{Excluded, Unbounded};
+    use std::ops::Bound::{self, Excluded, Unbounded};
+    use std::ops::RangeBounds;
 
     use crate::{BasicOps, Key, SplayWithKey};
 
@@ -35,6 +37,7 @@ mod rand_tests {
         insert: usize,
         query_first_lt: usize,
         query_first_gt: usize,
+        range: usize,
     }
     impl Default for OpNum {
         fn default() -> OpNum {
@@ -42,6 +45,7 @@ mod rand_tests {
                 insert: 0,
                 query_first_lt: 0,
                 query_first_gt: 0,
+                range: 0,
             }
         }
     }
@@ -100,6 +104,24 @@ mod rand_tests {
             assert!(ret.is_none());
         }
     }
+    fn query_range<'a, 'b, 'c, K, T, Range>(
+        env: &mut Env<'a, 'b, 'c, K, T>,
+        range: Range,
+    ) where
+        K: Ord + Clone + std::fmt::Debug,
+        T: BasicOps + Key<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
+        Range: RangeBounds<K> + Clone,
+    {
+        let std_ret: Vec<&T> = env
+            .btree
+            .range(range.clone())
+            .into_iter()
+            .map(|p| p.1)
+            .collect();
+        let range = env.splay.range(range);
+        let ret = range.collect_data();
+        assert_eq!(std_ret, ret);
+    }
     fn rand_op(mut num: OpNum, key_len: usize, val_len: usize) {
         #[derive(Clone, Debug, PartialEq)]
         struct SplayData {
@@ -122,7 +144,8 @@ mod rand_tests {
             key_len,
             val_len,
         };
-        let mut tot = num.insert + num.query_first_lt + num.query_first_gt;
+        let mut tot =
+            num.insert + num.query_first_lt + num.query_first_gt + num.range;
         while tot > 0 {
             let op_dist = Uniform::from(0..tot);
             let mut rand_num = op_dist.sample(env.rng);
@@ -152,7 +175,64 @@ mod rand_tests {
                 query_first_gt(&mut env, &key);
                 continue;
             }
-            // rand_num -= num.query_first_gt;
+            rand_num -= num.query_first_gt;
+            if rand_num < num.range {
+                num.range -= 1;
+                tot -= 1;
+                // 0: Included, 1: Excluded, 2: Unbounded
+                let get_bound = |t: i32, k: Vec<u8>| match t {
+                    0 => Bound::Included(k),
+                    1 => Bound::Excluded(k),
+                    _ => unreachable!(),
+                };
+                let bound_dist = Uniform::from(0..3);
+                let t1 = bound_dist.sample(env.rng);
+                let t2 = bound_dist.sample(env.rng);
+                let range = if t1 != 2 {
+                    let k1 = rand_digits(env.rng, env.key_len);
+                    if t2 != 2 {
+                        let k2 = rand_digits(env.rng, env.key_len);
+                        let res = k1.cmp(&k2);
+                        match res {
+                            Ordering::Less => {
+                                (get_bound(t1, k1), get_bound(t2, k2))
+                            }
+                            Ordering::Greater => {
+                                (get_bound(t2, k2), get_bound(t1, k1))
+                            }
+                            Ordering::Equal => {
+                                if t1 == 1 && t2 == 1 {
+                                    // To avoid panic
+                                    (Bound::Included(k1), Bound::Excluded(k2))
+                                } else {
+                                    (get_bound(t1, k1), get_bound(t2, k2))
+                                }
+                            }
+                        }
+                    } else {
+                        (get_bound(t1, k1), Bound::Unbounded)
+                    }
+                } else {
+                    (
+                        Bound::Unbounded,
+                        match t2 {
+                            0 => Bound::Included(rand_digits(
+                                env.rng,
+                                env.key_len,
+                            )),
+                            1 => Bound::Excluded(rand_digits(
+                                env.rng,
+                                env.key_len,
+                            )),
+                            2 => Bound::Unbounded,
+                            _ => unreachable!(),
+                        },
+                    )
+                };
+                query_range(&mut env, range);
+                continue;
+            }
+            // rand_num -= num.range;
             unreachable!();
         }
         assert_eq!(num.insert, 0);
@@ -166,6 +246,7 @@ mod rand_tests {
                 insert: n,
                 query_first_lt: n,
                 query_first_gt: n,
+                ..Default::default()
             },
             magnitude,
             magnitude,
@@ -190,6 +271,39 @@ mod rand_tests {
     #[test]
     fn rand_insert_query_first_lt_or_gt_1e5() {
         rand_insert_query_first_lt_or_gt(5);
+    }
+
+    fn rand_insert_query_long_range(magnitude: usize) {
+        let n = 10usize.pow(magnitude as u32);
+        rand_op(
+            OpNum {
+                insert: n,
+                range: (n as f64).sqrt() as usize,
+                ..Default::default()
+            },
+            magnitude,
+            magnitude,
+        );
+    }
+    #[test]
+    fn rand_insert_query_long_range_1e1() {
+        rand_insert_query_long_range(1);
+    }
+    #[test]
+    fn rand_insert_query_range_1e2() {
+        rand_insert_query_long_range(2);
+    }
+    #[test]
+    fn rand_insert_query_range_1e3() {
+        rand_insert_query_long_range(3);
+    }
+    #[test]
+    fn rand_insert_query_range_1e4() {
+        rand_insert_query_long_range(4);
+    }
+    #[test]
+    fn rand_insert_query_range_1e5() {
+        rand_insert_query_long_range(5);
     }
 }
 
