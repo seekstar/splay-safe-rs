@@ -106,7 +106,7 @@ mod rand_tests {
     }
     fn query_range<'a, 'b, 'c, K, T, Range>(
         env: &mut Env<'a, 'b, 'c, K, T>,
-        range: Range,
+        range: &Range,
     ) where
         K: Ord + Clone + std::fmt::Debug,
         T: BasicOps + Key<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
@@ -229,7 +229,7 @@ mod rand_tests {
                         },
                     )
                 };
-                query_range(&mut env, range);
+                query_range(&mut env, &range);
                 continue;
             }
             // rand_num -= num.range;

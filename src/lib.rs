@@ -945,7 +945,7 @@ impl<T: BasicOps, S> Splay<T, S> {
             .get_interval_ge(left)
             .get_interval_le(right)
     }
-    pub fn range<E, Range>(&mut self, range: Range) -> Interval<T, S>
+    pub fn range<E, Range>(&mut self, range: &Range) -> Interval<T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
