@@ -7,10 +7,10 @@
 mod tests;
 
 pub use compare::Compare;
+use compare::Natural;
 use num_traits::{One, Zero};
 
 use core::cmp::Ordering;
-use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
 
@@ -19,34 +19,6 @@ pub trait BasicOps {
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {}
     #[allow(unused)]
     fn push_down(&mut self, lc: Option<&mut Self>, rc: Option<&mut Self>) {}
-}
-
-pub trait Key<K: Ord> {
-    fn key(&self) -> &K;
-}
-
-impl<T: Ord> Key<T> for T {
-    fn key(&self) -> &T {
-        self
-    }
-}
-
-pub trait Count {
-    type CountType;
-    fn cnt(&self) -> &Self::CountType;
-}
-
-pub trait CountAdd: Count {
-    fn cnt_add(&mut self, delta: &Self::CountType);
-}
-
-pub trait CountSub: Count {
-    fn cnt_sub(&mut self, delta: &Self::CountType);
-}
-
-pub trait SubtreeCount: Count {
-    type SubtreeCountType;
-    fn subtree_count(&self) -> &Self::SubtreeCountType;
 }
 
 #[derive(Clone, PartialEq)]
@@ -178,26 +150,25 @@ impl<T: BasicOps> Node<T> {
     }
 }
 
-pub struct Range<'a, T, S> {
+pub struct Range<'a, T> {
     rt: &'a mut Option<Box<Node<T>>>,
-    shared: &'a S,
 }
 
-impl<'a, T, S> Range<'a, T, S> {
-    fn new(rt: &'a mut Option<Box<Node<T>>>, shared: &'a S) -> Range<'a, T, S> {
-        Range { rt, shared }
+impl<'a, T> Range<'a, T> {
+    fn new(rt: &'a mut Option<Box<Node<T>>>) -> Self {
+        Range { rt }
     }
 }
 
-impl<'a, T: BasicOps, S> Range<'a, T, S> {
+impl<'a, T: BasicOps> Range<'a, T> {
     // Not tested by OJ
     pub fn delete(&mut self) {
         self.rt.take();
     }
-    pub fn root_data(&self) -> Option<&T> {
+    fn root_data(&self) -> Option<&T> {
         self.rt.as_ref().map(|rt| &rt.d)
     }
-    // Not tested by OJ
+    /// Warning: This function does not perform push_down.
     pub fn collect_data(&self) -> Vec<&T> {
         let mut elems = Vec::new();
         collect_subtree_data(&self.rt, &mut elems);
@@ -237,38 +208,6 @@ impl<'a, T: BasicOps, S> Range<'a, T, S> {
         x.push_down();
         self.__rotate_to_root(x, path);
     }
-    /// # Arguments
-    /// * ge
-    /// 	- false: Find the first node whose value <= key.
-    /// 	- true: Find the first node whose value >= key.
-    fn path_to_first_le_or_ge<E>(
-        &mut self,
-        key: &E,
-        ge: bool,
-    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let mut next = self.rt.take();
-        let mut path = Vec::new();
-        let mut ans_depth = 0;
-        while let Some(mut cur) = next {
-            let res = self.shared.compare(&cur.d, key);
-            if res == Ordering::Equal {
-                path.push((cur, false));
-                ans_depth = path.len();
-                return (path, ans_depth);
-            }
-            let side = res == Ordering::Less;
-            next = cur.take_child(side);
-            path.push((cur, side));
-            if side != ge {
-                ans_depth = path.len();
-            }
-        }
-        (path, ans_depth)
-    }
     fn rotate_ans_to_root(
         &mut self,
         mut path: Vec<(Box<Node<T>>, bool)>,
@@ -298,197 +237,16 @@ impl<'a, T: BasicOps, S> Range<'a, T, S> {
         self.__rotate_to_root(ans, path);
         return true;
     }
-    // If found, then the node will be the root, and return true.
-    // Otherwise return false.
-    fn splay_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
-        self.rotate_ans_to_root(path, ans_depth)
-    }
-    fn splay_first_le<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.splay_first_le_or_ge(key, false)
-    }
-    pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.splay_first_le_or_ge(key, true)
-    }
-
-    fn path_to_first_less_or_greater<E, const GT: bool>(
-        &mut self,
-        key: &E,
-    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let mut next = self.rt.take();
-        let mut path = Vec::new();
-        let mut ans_depth = 0;
-        let go_right = if GT { S::compares_le } else { S::compares_lt };
-        while let Some(mut cur) = next {
-            let side = go_right(self.shared, &cur.d, key);
-            next = cur.take_child(side);
-            path.push((cur, side));
-            if side != GT {
-                ans_depth = path.len();
-            }
-        }
-        (path, ans_depth)
-    }
-    fn splay_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let (path, ans_depth) =
-            self.path_to_first_less_or_greater::<E, GT>(key);
-        self.rotate_ans_to_root(path, ans_depth)
-    }
-    fn splay_first_lt<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.splay_first_lt_or_gt::<E, false>(key)
-    }
-    pub fn splay_first_gt<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.splay_first_lt_or_gt::<E, true>(key)
-    }
-
-    fn lt_or_gt<E>(mut self, key: &E, gt: bool) -> Range<'a, T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let found = self.splay_first_le_or_ge(key, !gt);
-        if found {
-            let rt = self.rt.as_mut().unwrap();
-            Range::new(&mut rt.c[gt as usize], self.shared)
-        } else {
-            self
-        }
-    }
-    pub fn lt<E>(self, key: &E) -> Range<'a, T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.lt_or_gt(key, false)
-    }
-    fn gt<E>(self, key: &E) -> Range<'a, T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.lt_or_gt(key, true)
-    }
-
-    fn le_or_ge<E, const GE: bool>(mut self, key: &E) -> Range<'a, T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let found = if GE {
-            self.splay_first_lt(key)
-        } else {
-            self.splay_first_gt(key)
-        };
-        if found {
-            let rt = self.rt.as_mut().unwrap();
-            Range::new(&mut rt.c[GE as usize], self.shared)
-        } else {
-            self
-        }
-    }
-    fn le<E>(self, key: &E) -> Range<'a, T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.le_or_ge::<E, false>(key)
-    }
-    fn ge<E>(self, key: &E) -> Range<'a, T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.le_or_ge::<E, true>(key)
-    }
 }
 
-impl<'a, T: BasicOps + SubtreeCount, S> Range<'a, T, S> {
-    fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
-    where
-        T::CountType: Copy,
-        T::SubtreeCountType: Ord
-            + Copy
-            + Zero
-            + Add<T::CountType, Output = T::SubtreeCountType>
-            + SubAssign,
-    {
-        let mut next = self.rt.take();
-        let mut path = Vec::new();
-        while let Some(mut cur) = next {
-            cur.push_down();
-            let lscnt = if let Some(ref lc) = cur.c[0] {
-                *lc.d.subtree_count()
-            } else {
-                T::SubtreeCountType::zero()
-            };
-            let cur_cnt = *cur.d.cnt();
-            if &lscnt < &k && &(lscnt + cur_cnt) >= &k {
-                self.__rotate_to_root(cur, path);
-                return true;
-            }
-            let side = lscnt < k;
-            if side {
-                k -= lscnt + cur_cnt;
-            };
-            next = cur.c[side as usize].take();
-            path.push((cur, side));
-        }
-        let (x, _) = if let Some(x) = path.pop() {
-            x
-        } else {
-            return false;
-        };
-        self.__rotate_to_root(x, path);
-        return false;
-    }
-}
-
-pub struct Splay<T, S> {
+pub struct Splay<T> {
     root: Option<Box<Node<T>>>,
-    shared: S, // Mostly for comparator
 }
 
-impl<T, S: Default> Splay<T, S> {
+impl<T> Splay<T> {
     // use Basic::C as CT;
-    pub fn new() -> Splay<T, S> {
-        Splay {
-            root: None,
-            shared: S::default(),
-        }
-    }
-}
-
-impl<T, S> Splay<T, S> {
-    pub fn with_shared(shared: S) -> Splay<T, S> {
-        Splay { root: None, shared }
+    pub fn new() -> Splay<T> {
+        Splay { root: None }
     }
 }
 
@@ -517,38 +275,22 @@ where
     Some(node)
 }
 
-impl<T: BasicOps, S> Splay<T, S> {
-    fn from_with_constructor_shared<E, F>(
+impl<T: BasicOps> Splay<T> {
+    pub fn from_with_constructor<E, F>(
         mut v: Vec<E>,
         constructor: F,
-        s: S,
-    ) -> Splay<T, S>
+    ) -> Splay<T>
     where
         F: Copy + Fn(E) -> T,
     {
         let root = build(&mut v, 0, constructor);
         debug_assert!(v.is_empty());
-        Splay { root, shared: s }
-    }
-    pub fn from_with_shared<E>(v: Vec<E>, s: S) -> Splay<T, S>
-    where
-        T: From<E>,
-    {
-        Self::from_with_constructor_shared(v, T::from, s)
+        Splay { root }
     }
 }
 
-impl<T: BasicOps, S: Default> Splay<T, S> {
-    pub fn from_with_constructor<E, F>(v: Vec<E>, constructor: F) -> Splay<T, S>
-    where
-        F: Copy + Fn(E) -> T,
-    {
-        Self::from_with_constructor_shared(v, constructor, S::default())
-    }
-}
-
-impl<E, T: BasicOps + From<E>, S: Default> From<Vec<E>> for Splay<T, S> {
-    fn from(v: Vec<E>) -> Splay<T, S> {
+impl<E, T: BasicOps + From<E>> From<Vec<E>> for Splay<T> {
+    fn from(v: Vec<E>) -> Splay<T> {
         Splay::from_with_constructor(v, T::from)
     }
 }
@@ -588,9 +330,9 @@ where
     }
 }
 
-impl<T: BasicOps, S> Splay<T, S> {
-    pub fn to_range(&mut self) -> Range<T, S> {
-        Range::new(&mut self.root, &self.shared)
+impl<T: BasicOps> Splay<T> {
+    pub fn to_range(&mut self) -> Range<T> {
+        Range::new(&mut self.root)
     }
     fn __rotate_to_root(
         &mut self,
@@ -641,9 +383,33 @@ impl<T: BasicOps, S> Splay<T, S> {
     fn pop_root(&mut self) -> Option<T> {
         self.take_root().map(|rt| rt.d)
     }
-    pub fn deref_root(&mut self) -> bool
+    fn collect_data(&self) -> Vec<&T> {
+        let mut elems = Vec::new();
+        collect_subtree_data(&self.root, &mut elems);
+        elems
+    }
+}
+
+pub trait Count: BasicOps {
+    type CountType;
+    fn cnt(&self) -> &Self::CountType;
+}
+
+pub trait CountAdd: Count {
+    fn cnt_add(&mut self, delta: &Self::CountType);
+}
+
+pub trait CountSub: Count {
+    fn cnt_sub(&mut self, delta: &Self::CountType);
+}
+pub trait SubtreeCount: Count {
+    type SubtreeCountType;
+    fn subtree_count(&self) -> &Self::SubtreeCountType;
+}
+
+impl<T: CountSub> Splay<T> {
+    fn deref_root(&mut self) -> bool
     where
-        T: CountSub,
         T::CountType: Zero + One,
     {
         let root = match self.root.as_mut() {
@@ -658,279 +424,50 @@ impl<T: BasicOps, S> Splay<T, S> {
             true
         }
     }
+}
 
-    // If the key does not already exist, then return the path to the insert
-    // location.
-    // If the key already exists, then return None. The existing key will be
-    // the root.
-    fn find_insert_location<E>(
-        &mut self,
-        key: &E,
-    ) -> Option<Vec<(Box<Node<T>>, bool)>>
+impl<'a, T: SubtreeCount> Range<'a, T> {
+    fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
     where
-        S: Compare<T, E>,
-        E: ?Sized,
+        T::CountType: Copy,
+        T::SubtreeCountType: Ord
+            + Copy
+            + Zero
+            + Add<T::CountType, Output = T::SubtreeCountType>
+            + SubAssign,
     {
-        let mut path = Vec::new();
-        let mut cur = match self.root.take() {
-            Some(root) => root,
-            None => {
-                return Some(path);
-            }
-        };
-        loop {
-            let res = self.shared.compare(&cur.d, key);
-            if res == Ordering::Equal {
-                self.rotate_to_root(cur, path);
-                return None;
-            }
-            let side = res == Ordering::Less;
-            let next = cur.take_child(side);
-            path.push((cur, side));
-            if let Some(nex) = next {
-                cur = nex
-            } else {
-                return Some(path);
-            }
-        }
-    }
-    // Return successful or not.
-    pub fn insert<E>(&mut self, key: &E, data: T) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let path = match self.find_insert_location(key) {
-            Some(path) => path,
-            None => return false,
-        };
-        let node = Box::new(Node::new(data));
-        self.__rotate_to_root(node, path);
-        return true;
-    }
-    // If the key already exists, then make it the root and return false.
-    // Otherwise, construct the data with `func`, insert the node, rotate
-    // the new node to root, and return true.
-    // Return whether the insertion is successful or not.
-    pub fn insert_owned_key_with_func<E, F>(&mut self, key: E, func: F) -> bool
-    where
-        S: Compare<T, E>,
-        F: FnOnce(E) -> T,
-    {
-        let path = match self.find_insert_location(&key) {
-            Some(path) => path,
-            None => return false,
-        };
-        let node = Box::new(Node::new(func(key)));
-        self.__rotate_to_root(node, path);
-        return true;
-    }
-    // Return succeed or not.
-    pub fn insert_owned_key<E>(&mut self, key: E) -> bool
-    where
-        S: Compare<T, E>,
-        T: From<E>,
-    {
-        self.insert_owned_key_with_func(key, |key| T::from(key))
-    }
-    pub fn insert_owned_key_or_inc_cnt<E>(&mut self, key: E)
-    where
-        S: Compare<T, E>,
-        T: From<E> + CountAdd,
-        T::CountType: One,
-    {
-        if self.insert_owned_key(key) == false {
-            self.update_root_data(|d| d.cnt_add(&T::CountType::one()));
-        }
-    }
-
-    pub fn find<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let mut next = self.root.take();
+        let mut next = self.rt.take();
         let mut path = Vec::new();
         while let Some(mut cur) = next {
-            let res = self.shared.compare(&cur.d, key);
-            if res == Ordering::Equal {
-                self.rotate_to_root(cur, path);
+            cur.push_down();
+            let lscnt = if let Some(ref lc) = cur.c[0] {
+                *lc.d.subtree_count()
+            } else {
+                T::SubtreeCountType::zero()
+            };
+            let cur_cnt = *cur.d.cnt();
+            if &lscnt < &k && &(lscnt + cur_cnt) >= &k {
+                self.__rotate_to_root(cur, path);
                 return true;
             }
-            let side = res == Ordering::Less;
-            next = cur.take_child(side);
+            let side = lscnt < k;
+            if side {
+                k -= lscnt + cur_cnt;
+            };
+            next = cur.c[side as usize].take();
             path.push((cur, side));
         }
-        // Not found. Rotate the last accessed node to root to maintain
-        // complexity.
-        let prev = match path.pop() {
-            Some((prev, _)) => prev,
-            None => return false,
-        };
-        self.__rotate_to_root(prev, path);
-        return false;
-    }
-    pub fn remove<E>(&mut self, key: &E) -> Option<T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let ret = self.find(key);
-        if ret {
-            Some(self.take_root().unwrap().d)
+        let (x, _) = if let Some(x) = path.pop() {
+            x
         } else {
-            None
-        }
-    }
-
-    fn splay_smallest_or_largest(&mut self, is_largest: bool) {
-        let mut path = Vec::new();
-        find_smallest_or_largest(self.root.take(), is_largest, &mut path);
-        let x = match path.pop() {
-            Some((x, _)) => x,
-            None => return,
+            return false;
         };
         self.__rotate_to_root(x, path);
-    }
-    pub fn pop_smallest(&mut self) -> Option<T> {
-        self.splay_smallest_or_largest(false);
-        self.pop_root()
-    }
-    pub fn pop_largest(&mut self) -> Option<T> {
-        self.splay_smallest_or_largest(true);
-        self.pop_root()
-    }
-    fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
-        self.splay_smallest_or_largest(is_largest);
-        self.root_data()
-    }
-    pub fn query_smallest(&mut self) -> Option<&T> {
-        self.query_smallest_or_largest(false)
-    }
-
-    pub fn splay_first_le<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.to_range().splay_first_le(key)
-    }
-    pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.to_range().splay_first_ge(key)
-    }
-
-    fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let found = self.to_range().splay_first_le_or_ge(key, ge);
-        if !found {
-            return None;
-        }
-        let ret = self.root_data();
-        assert!(ret.is_some());
-        ret
-    }
-    pub fn query_first_le<E>(&mut self, key: &E) -> Option<&T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.query_first_le_or_ge(key, false)
-    }
-    pub fn query_first_ge<E>(&mut self, key: &E) -> Option<&T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.query_first_le_or_ge(key, true)
-    }
-
-    fn query_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> Option<&T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let found = self.to_range().splay_first_lt_or_gt::<E, GT>(key);
-        if !found {
-            return None;
-        }
-        let ret = self.root_data();
-        assert!(ret.is_some());
-        ret
-    }
-    pub fn query_first_lt<E>(&mut self, key: &E) -> Option<&T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.query_first_lt_or_gt::<E, false>(key)
-    }
-    pub fn query_first_gt<E>(&mut self, key: &E) -> Option<&T>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        self.query_first_lt_or_gt::<E, true>(key)
-    }
-
-    // The remaining smallest will be the root.
-    pub fn del_smaller<E>(&mut self, key: &E)
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let (mut path, ans_depth) =
-            self.to_range().path_to_first_le_or_ge(key, true);
-        path.truncate(ans_depth);
-        let mut ans = match path.pop() {
-            Some((ans, _)) => ans,
-            None => return,
-        };
-        ans.__splay(path);
-        ans.set_child(false, None);
-        self.root = Some(ans);
-    }
-
-    pub fn range<E, R>(&mut self, range: R) -> Range<T, S>
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-        R: RangeBounds<E>,
-    {
-        let mut ans = self.to_range();
-        match range.start_bound() {
-            Bound::Included(key) => ans = ans.ge(key),
-            Bound::Excluded(key) => ans = ans.gt(key),
-            Bound::Unbounded => {}
-        }
-        match range.end_bound() {
-            Bound::Included(key) => ans = ans.le(key),
-            Bound::Excluded(key) => ans = ans.lt(key),
-            Bound::Unbounded => {}
-        }
-        ans
-    }
-
-    /// Warning: This function does not perform push_down.
-    pub fn collect_data(&self) -> Vec<&T> {
-        let mut elems = Vec::new();
-        collect_subtree_data(&self.root, &mut elems);
-        elems
-    }
-    pub fn take_all_data(&mut self) -> Vec<T> {
-        let mut elems = Vec::new();
-        take_subtree_data(self.root.take(), &mut elems);
-        elems
+        return false;
     }
 }
 
-impl<T: BasicOps + SubtreeCount, S> Splay<T, S> {
+impl<T: SubtreeCount> Splay<T> {
     pub fn size(&self) -> T::SubtreeCountType
     where
         T::SubtreeCountType: Zero + Copy,
@@ -1032,100 +569,701 @@ where
     __print_subtree(rt, &mut String::new());
 }
 
-impl<T: BasicOps + std::fmt::Display, S> Splay<T, S> {
+impl<T: BasicOps + std::fmt::Display> Splay<T> {
     pub fn print_tree(&self) {
         print_subtree(&self.root);
     }
 }
 
-pub struct KeyComparator<K>(PhantomData<K>);
+pub trait WithKey: BasicOps {
+    type KeyType;
+    fn key(&self) -> &Self::KeyType;
+}
+pub trait WithValue: WithKey {
+    type ValueType;
+    fn value(&self) -> &Self::ValueType;
+    fn value_mut(&mut self) -> &mut Self::ValueType;
+}
+macro_rules! impl_with_key {
+    ($t:ty) => {
+        impl BasicOps for $t {}
+        impl WithKey for $t {
+            type KeyType = $t;
+            fn key(&self) -> &$t {
+                self
+            }
+        }
+    };
+}
+impl_with_key!(i8);
+impl_with_key!(u8);
+impl_with_key!(i16);
+impl_with_key!(u16);
+impl_with_key!(i32);
+impl_with_key!(u32);
+impl_with_key!(i64);
+impl_with_key!(u64);
+impl_with_key!(i128);
+impl_with_key!(u128);
+impl_with_key!(isize);
+impl_with_key!(usize);
+impl_with_key!(f32);
+impl_with_key!(f64);
 
-impl<T> Default for KeyComparator<T> {
-    fn default() -> Self {
-        KeyComparator(PhantomData::default())
+pub struct KeyRange<'a, T: WithKey, C = Natural<<T as WithKey>::KeyType>> {
+    range: Range<'a, T>,
+    comparator: &'a C,
+}
+impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
+    fn new(rt: &'a mut Option<Box<Node<T>>>, comparator: &'a C) -> Self {
+        KeyRange {
+            range: Range::new(rt),
+            comparator,
+        }
+    }
+    pub fn root_data(&self) -> Option<&T> {
+        self.range.root_data()
+    }
+    pub fn collect_data(&self) -> Vec<&T> {
+        self.range.collect_data()
+    }
+    pub fn take_all_data(self) -> Vec<T> {
+        self.range.take_all_data()
+    }
+
+    /// # Arguments
+    /// * ge
+    /// 	- false: Find the first node whose value <= key.
+    /// 	- true: Find the first node whose value >= key.
+    fn path_to_first_le_or_ge<E>(
+        &mut self,
+        key: &E,
+        ge: bool,
+    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let mut next = self.range.rt.take();
+        let mut path = Vec::new();
+        let mut ans_depth = 0;
+        while let Some(mut cur) = next {
+            let res = self.comparator.compare(&cur.d.key(), key);
+            if res == Ordering::Equal {
+                path.push((cur, false));
+                ans_depth = path.len();
+                return (path, ans_depth);
+            }
+            let side = res == Ordering::Less;
+            next = cur.take_child(side);
+            path.push((cur, side));
+            if side != ge {
+                ans_depth = path.len();
+            }
+        }
+        (path, ans_depth)
+    }
+    // If found, then the node will be the root, and return true.
+    // Otherwise return false.
+    fn splay_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
+        self.range.rotate_ans_to_root(path, ans_depth)
+    }
+    fn splay_first_le<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.splay_first_le_or_ge(key, false)
+    }
+    pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.splay_first_le_or_ge(key, true)
+    }
+
+    fn path_to_first_less_or_greater<E, const GT: bool>(
+        &mut self,
+        key: &E,
+    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let mut next = self.range.rt.take();
+        let mut path = Vec::new();
+        let mut ans_depth = 0;
+        let go_right = if GT { C::compares_le } else { C::compares_lt };
+        while let Some(mut cur) = next {
+            let side = go_right(&self.comparator, &cur.d.key(), key);
+            next = cur.take_child(side);
+            path.push((cur, side));
+            if side != GT {
+                ans_depth = path.len();
+            }
+        }
+        (path, ans_depth)
+    }
+    fn splay_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let (path, ans_depth) =
+            self.path_to_first_less_or_greater::<E, GT>(key);
+        self.range.rotate_ans_to_root(path, ans_depth)
+    }
+    fn splay_first_lt<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.splay_first_lt_or_gt::<E, false>(key)
+    }
+    pub fn splay_first_gt<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.splay_first_lt_or_gt::<E, true>(key)
+    }
+
+    fn lt_or_gt<E>(mut self, key: &E, gt: bool) -> Self
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let found = self.splay_first_le_or_ge(key, !gt);
+        if found {
+            let rt = self.range.rt.as_mut().unwrap();
+            KeyRange::new(&mut rt.c[gt as usize], self.comparator)
+        } else {
+            self
+        }
+    }
+    pub fn lt<E>(self, key: &E) -> Self
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.lt_or_gt(key, false)
+    }
+    fn gt<E>(self, key: &E) -> Self
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.lt_or_gt(key, true)
+    }
+
+    fn le_or_ge<E, const GE: bool>(mut self, key: &E) -> Self
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let found = if GE {
+            self.splay_first_lt(key)
+        } else {
+            self.splay_first_gt(key)
+        };
+        if found {
+            let rt = self.range.rt.as_mut().unwrap();
+            Self::new(&mut rt.c[GE as usize], &self.comparator)
+        } else {
+            self
+        }
+    }
+    fn le<E>(self, key: &E) -> Self
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.le_or_ge::<E, false>(key)
+    }
+    fn ge<E>(self, key: &E) -> Self
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.le_or_ge::<E, true>(key)
+    }
+}
+impl<'a, T: WithValue, C> KeyRange<'a, T, C> {
+    // Return updated or not
+    pub fn update_root_value<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&mut T::ValueType),
+    {
+        let root = match self.range.rt.as_mut() {
+            Some(root) => root,
+            None => return false,
+        };
+        f(root.d.value_mut());
+        root.push_up();
+        return true;
     }
 }
 
-impl<K: Ord, L: Key<K>, R: Key<K>> Compare<L, R> for KeyComparator<K> {
-    fn compare(&self, l: &L, r: &R) -> Ordering {
-        l.key().cmp(r.key())
+pub struct SplayWithKey<T: WithKey, C = Natural<<T as WithKey>::KeyType>> {
+    splay: Splay<T>,
+    comparator: C,
+}
+impl<T: WithKey, C> SplayWithKey<T, C> {
+    fn with_comparator(comparator: C) -> Self {
+        Self {
+            splay: Splay::new(),
+            comparator,
+        }
+    }
+    fn new() -> Self
+    where
+        C: Default,
+    {
+        Self::with_comparator(C::default())
+    }
+    fn from_with_constructor<E, F>(v: Vec<E>, constructor: F) -> Self
+    where
+        C: Default,
+        F: Copy + Fn(E) -> T,
+    {
+        Self {
+            splay: Splay::from_with_constructor(v, constructor),
+            comparator: C::default(),
+        }
+    }
+
+    fn to_range(&mut self) -> KeyRange<T, C> {
+        KeyRange {
+            range: self.splay.to_range(),
+            comparator: &self.comparator,
+        }
+    }
+    pub fn root_data(&self) -> Option<&T> {
+        self.splay.root_data()
+    }
+
+    // If the key does not already exist, then return the path to the insert
+    // location.
+    // If the key already exists, then return None. The existing key will be
+    // the root.
+    fn find_insert_location<E>(
+        &mut self,
+        key: &E,
+    ) -> Option<Vec<(Box<Node<T>>, bool)>>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let mut path = Vec::new();
+        let mut cur = match self.splay.root.take() {
+            Some(root) => root,
+            None => {
+                return Some(path);
+            }
+        };
+        loop {
+            let res = self.comparator.compare(&cur.d.key(), key);
+            if res == Ordering::Equal {
+                self.splay.rotate_to_root(cur, path);
+                return None;
+            }
+            let side = res == Ordering::Less;
+            let next = cur.take_child(side);
+            path.push((cur, side));
+            if let Some(nex) = next {
+                cur = nex
+            } else {
+                return Some(path);
+            }
+        }
+    }
+    // Return successful or not.
+    pub fn insert<E>(&mut self, key: &E, data: T) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let path = match self.find_insert_location(key) {
+            Some(path) => path,
+            None => return false,
+        };
+        let node = Box::new(Node::new(data));
+        self.splay.__rotate_to_root(node, path);
+        return true;
+    }
+    // If the key already exists, then make it the root and return false.
+    // Otherwise, construct the data with `func`, insert the node, rotate
+    // the new node to root, and return true.
+    // Return whether the insertion is successful or not.
+    pub fn insert_owned_key_with_func<E, F>(&mut self, key: E, func: F) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        F: FnOnce(E) -> T,
+    {
+        let path = match self.find_insert_location(&key) {
+            Some(path) => path,
+            None => return false,
+        };
+        let node = Box::new(Node::new(func(key)));
+        self.splay.__rotate_to_root(node, path);
+        return true;
+    }
+    // Return succeed or not.
+    pub fn insert_owned_key<E>(&mut self, key: E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        T: From<E>,
+    {
+        self.insert_owned_key_with_func(key, |key| T::from(key))
+    }
+    pub fn insert_owned_key_or_inc_cnt<E>(&mut self, key: E)
+    where
+        C: Compare<T::KeyType, E>,
+        T: From<E> + CountAdd,
+        T::CountType: One,
+    {
+        if self.insert_owned_key(key) == false {
+            self.splay
+                .update_root_data(|d| d.cnt_add(&T::CountType::one()));
+        }
+    }
+
+    pub fn find<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let mut next = self.splay.root.take();
+        let mut path = Vec::new();
+        while let Some(mut cur) = next {
+            let res = self.comparator.compare(&cur.d.key(), key);
+            if res == Ordering::Equal {
+                self.splay.rotate_to_root(cur, path);
+                return true;
+            }
+            let side = res == Ordering::Less;
+            next = cur.take_child(side);
+            path.push((cur, side));
+        }
+        // Not found. Rotate the last accessed node to root to maintain
+        // complexity.
+        let prev = match path.pop() {
+            Some((prev, _)) => prev,
+            None => return false,
+        };
+        self.splay.__rotate_to_root(prev, path);
+        return false;
+    }
+    pub fn remove<E>(&mut self, key: &E) -> Option<T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let ret = self.find(key);
+        if ret {
+            Some(self.splay.take_root().unwrap().d)
+        } else {
+            None
+        }
+    }
+
+    fn splay_smallest_or_largest(&mut self, is_largest: bool) {
+        let mut path = Vec::new();
+        find_smallest_or_largest(self.splay.root.take(), is_largest, &mut path);
+        let x = match path.pop() {
+            Some((x, _)) => x,
+            None => return,
+        };
+        self.splay.__rotate_to_root(x, path);
+    }
+    pub fn pop_smallest(&mut self) -> Option<T> {
+        self.splay_smallest_or_largest(false);
+        self.splay.pop_root()
+    }
+    pub fn pop_largest(&mut self) -> Option<T> {
+        self.splay_smallest_or_largest(true);
+        self.splay.pop_root()
+    }
+    fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
+        self.splay_smallest_or_largest(is_largest);
+        self.root_data()
+    }
+    pub fn query_smallest(&mut self) -> Option<&T> {
+        self.query_smallest_or_largest(false)
+    }
+
+    pub fn splay_first_le<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.to_range().splay_first_le(key)
+    }
+    pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.to_range().splay_first_ge(key)
+    }
+
+    fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let found = self.to_range().splay_first_le_or_ge(key, ge);
+        if !found {
+            return None;
+        }
+        let ret = self.root_data();
+        assert!(ret.is_some());
+        ret
+    }
+    pub fn query_first_le<E>(&mut self, key: &E) -> Option<&T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.query_first_le_or_ge(key, false)
+    }
+    pub fn query_first_ge<E>(&mut self, key: &E) -> Option<&T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.query_first_le_or_ge(key, true)
+    }
+
+    fn query_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> Option<&T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let found = self.to_range().splay_first_lt_or_gt::<E, GT>(key);
+        if !found {
+            return None;
+        }
+        let ret = self.root_data();
+        assert!(ret.is_some());
+        ret
+    }
+    pub fn query_first_lt<E>(&mut self, key: &E) -> Option<&T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.query_first_lt_or_gt::<E, false>(key)
+    }
+    pub fn query_first_gt<E>(&mut self, key: &E) -> Option<&T>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        self.query_first_lt_or_gt::<E, true>(key)
+    }
+
+    // The remaining smallest will be the root.
+    pub fn del_smaller<E>(&mut self, key: &E)
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+    {
+        let (mut path, ans_depth) =
+            self.to_range().path_to_first_le_or_ge(key, true);
+        path.truncate(ans_depth);
+        let mut ans = match path.pop() {
+            Some((ans, _)) => ans,
+            None => return,
+        };
+        ans.__splay(path);
+        ans.set_child(false, None);
+        self.splay.root = Some(ans);
+    }
+
+    pub fn range<E, R>(&mut self, range: R) -> KeyRange<T, C>
+    where
+        C: Compare<T::KeyType, E>,
+        E: ?Sized,
+        R: RangeBounds<E>,
+    {
+        let mut ans = self.to_range();
+        match range.start_bound() {
+            Bound::Included(key) => ans = ans.ge(key),
+            Bound::Excluded(key) => ans = ans.gt(key),
+            Bound::Unbounded => {}
+        }
+        match range.end_bound() {
+            Bound::Included(key) => ans = ans.le(key),
+            Bound::Excluded(key) => ans = ans.lt(key),
+            Bound::Unbounded => {}
+        }
+        ans
+    }
+
+    pub fn collect_data(&self) -> Vec<&T> {
+        self.splay.collect_data()
+    }
+    pub fn take_all_data(&mut self) -> Vec<T> {
+        let mut elems = Vec::new();
+        take_subtree_data(self.splay.root.take(), &mut elems);
+        elems
     }
 }
-
-pub type SplayWithKey<K, T> = Splay<T, KeyComparator<K>>;
+impl<T: WithValue, C> SplayWithKey<T, C> {
+    // Return updated or not
+    pub fn update_root_value<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&mut T::ValueType),
+    {
+        self.to_range().update_root_value(f)
+    }
+}
+impl<T: WithKey + CountSub, C> SplayWithKey<T, C> {
+    pub fn deref_root(&mut self) -> bool
+    where
+        T: CountSub,
+        T::CountType: Zero + One,
+    {
+        self.splay.deref_root()
+    }
+}
+impl<T: WithKey + SubtreeCount, C> SplayWithKey<T, C> {
+    pub fn size(&self) -> T::SubtreeCountType
+    where
+        T::SubtreeCountType: Zero + Copy,
+    {
+        self.splay.size()
+    }
+    pub fn splay_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
+    where
+        T::CountType: Copy,
+        T::SubtreeCountType: Ord
+            + Copy
+            + Zero
+            + Add<T::CountType, Output = T::SubtreeCountType>
+            + SubAssign,
+    {
+        self.splay.splay_kth(k)
+    }
+    // Only for DEBUG
+    pub fn check_sanity(&self)
+    where
+        T::CountType: Copy,
+        T::SubtreeCountType:
+            std::fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
+    {
+        self.splay.check_sanity()
+    }
+}
+impl<T: WithKey + std::fmt::Display, C> SplayWithKey<T, C> {
+    pub fn print_tree(&self) {
+        self.splay.print_tree()
+    }
+}
+impl<E, T: WithKey + From<E>, C: Default> From<Vec<E>> for SplayWithKey<T, C> {
+    fn from(v: Vec<E>) -> Self {
+        SplayWithKey::from_with_constructor(v, T::from)
+    }
+}
 
 // Example
-struct RankTreeData<T: Ord> {
-    key: T,
+struct RankTreeValue {
     cnt: u32,
     scnt: u32,
+}
+struct RankTreeData<T: Ord> {
+    key: T,
+    value: RankTreeValue,
+}
+impl<T: Ord> RankTreeData<T> {
+    fn new(key: T, cnt: u32, scnt: u32) -> Self {
+        RankTreeData {
+            key,
+            value: RankTreeValue { cnt, scnt },
+        }
+    }
 }
 
 impl<T: Ord> BasicOps for RankTreeData<T> {
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
-        self.scnt = self.cnt;
+        self.value.scnt = self.value.cnt;
         if let Some(d) = lc {
-            self.scnt += d.scnt;
+            self.value.scnt += d.value.scnt;
         }
         if let Some(d) = rc {
-            self.scnt += d.scnt;
+            self.value.scnt += d.value.scnt;
         }
     }
 }
 
-impl<T: Ord> Key<T> for RankTreeData<T> {
+impl<T: Ord> WithKey for RankTreeData<T> {
+    type KeyType = T;
     fn key(&self) -> &T {
         &self.key
+    }
+}
+impl<T: Ord> WithValue for RankTreeData<T> {
+    type ValueType = RankTreeValue;
+    fn value(&self) -> &Self::ValueType {
+        &self.value
+    }
+    fn value_mut(&mut self) -> &mut Self::ValueType {
+        &mut self.value
     }
 }
 
 impl<T: Ord> From<T> for RankTreeData<T> {
     fn from(key: T) -> Self {
-        RankTreeData {
-            key,
-            cnt: 1,
-            scnt: 1,
-        }
+        RankTreeData::new(key, 1, 1)
     }
 }
 
 impl<T: Ord> Count for RankTreeData<T> {
     type CountType = u32;
     fn cnt(&self) -> &Self::CountType {
-        &self.cnt
+        &self.value.cnt
     }
 }
 
 impl<T: Ord> CountAdd for RankTreeData<T> {
     fn cnt_add(&mut self, delta: &Self::CountType) {
-        self.cnt += delta;
+        self.value.cnt += delta;
     }
 }
 
 impl<T: Ord> SubtreeCount for RankTreeData<T> {
     type SubtreeCountType = u32;
     fn subtree_count(&self) -> &Self::SubtreeCountType {
-        &self.scnt
+        &self.value.scnt
     }
 }
 
 impl<T: Ord + std::fmt::Display> std::fmt::Display for RankTreeData<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}*{}", self.key, self.cnt)
+        write!(f, "{}*{}", self.key, self.value.cnt)
     }
 }
 
 pub struct RankTree<T: Ord> {
-    rep: SplayWithKey<T, RankTreeData<T>>,
+    rep: SplayWithKey<RankTreeData<T>>,
 }
 
 impl<T: Ord> RankTree<T> {
     pub fn new() -> RankTree<T> {
-        RankTree { rep: Splay::new() }
+        RankTree {
+            rep: SplayWithKey::new(),
+        }
     }
 }
 
-impl<T: Ord + Key<T>> RankTree<T> {
+impl<T: Ord + WithKey> RankTree<T> {
     pub fn size(&self) -> u32 {
         self.rep.size()
     }
