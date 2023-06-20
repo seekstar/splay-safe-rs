@@ -106,7 +106,7 @@ mod rand_tests {
     }
     fn query_range<'a, 'b, 'c, K, T, Range>(
         env: &mut Env<'a, 'b, 'c, K, T>,
-        range: &Range,
+        range: Range,
     ) where
         K: Ord + Clone + std::fmt::Debug,
         T: BasicOps + Key<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
@@ -229,7 +229,7 @@ mod rand_tests {
                         },
                     )
                 };
-                query_range(&mut env, &range);
+                query_range(&mut env, range);
                 continue;
             }
             // rand_num -= num.range;
@@ -312,6 +312,7 @@ mod online_judge {
     use crate::{
         BasicOps, Count, CountAdd, CountSub, Key, RankTree, Splay, SplayWithKey,
     };
+    use std::ops::Bound::Included;
 
     #[test]
     fn luogu_1486() {
@@ -502,14 +503,14 @@ mod online_judge {
                 &self.key
             }
         }
-        fn interval_add(
+        fn range_add(
             splay: &mut SplayWithKey<i32, SplayData>,
             x: i32,
             y: i32,
             k: i32,
         ) {
-            let mut interval = splay.get_closed_interval(&x, &y);
-            interval.update_root_data(|d| {
+            let mut range = splay.range((Included(x), Included(y)));
+            range.update_root_data(|d| {
                 d.value += k;
                 d.lazy += k;
             });
@@ -530,23 +531,23 @@ mod online_judge {
             },
         );
         // 1, 5, 4, 2, 3
-        interval_add(&mut splay, 2, 4, 2);
+        range_add(&mut splay, 2, 4, 2);
         // 1, 7, 6, 4, 3
         assert_eq!(point_query(&mut splay, 3), 6);
-        interval_add(&mut splay, 1, 5, -1);
+        range_add(&mut splay, 1, 5, -1);
         // 0, 6, 5, 3, 2
-        interval_add(&mut splay, 3, 5, 7);
+        range_add(&mut splay, 3, 5, 7);
         // 0, 6, 12, 10, 9
         assert_eq!(point_query(&mut splay, 4), 10);
 
         // Additional
-        let interval = splay.get_closed_interval(&6, &6);
-        assert!(interval.collect_data().is_empty());
-        let interval = splay.get_closed_interval(&0, &0);
-        assert!(interval.collect_data().is_empty());
-        let interval = splay.get_closed_interval(&2, &2);
+        let range = splay.range((Included(6), Included(6)));
+        assert!(range.collect_data().is_empty());
+        let range = splay.range((Included(0), Included(0)));
+        assert!(range.collect_data().is_empty());
+        let range = splay.range((Included(2), Included(2)));
         assert_eq!(
-            interval
+            range
                 .take_all_data()
                 .iter()
                 .map(|x| (x.key, x.value))
@@ -563,9 +564,9 @@ mod online_judge {
             vec![(1, 0), (3, 12), (4, 10), (5, 9)],
         );
 
-        let interval = splay.get_closed_interval(&3, &4);
+        let range = splay.range((Included(3), Included(4)));
         assert_eq!(
-            interval
+            range
                 .take_all_data()
                 .iter()
                 .map(|x| (x.key, x.value))
@@ -582,9 +583,9 @@ mod online_judge {
             vec![(1, 0), (5, 9)],
         );
 
-        let interval = splay.get_closed_interval(&0, &6);
+        let range = splay.range((Included(0), Included(6)));
         assert_eq!(
-            interval
+            range
                 .take_all_data()
                 .iter()
                 .map(|x| (x.key, x.value))
@@ -638,7 +639,7 @@ mod online_judge {
             }
         }
         fn num_less_than(splay: &mut SplayWithKey<u8, SplayData>, x: u8) -> u8 {
-            match splay.to_interval().get_interval_lt(&x).root_data() {
+            match splay.to_range().lt(&x).root_data() {
                 Some(d) => d.scnt,
                 None => 0,
             }

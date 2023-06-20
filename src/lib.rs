@@ -178,24 +178,18 @@ impl<T: BasicOps> Node<T> {
     }
 }
 
-pub struct Interval<'a, T, S> {
+pub struct Range<'a, T, S> {
     rt: &'a mut Option<Box<Node<T>>>,
     shared: &'a S,
 }
 
-impl<'a, T, S> Interval<'a, T, S> {
-    fn new(
-        rt: &'a mut Option<Box<Node<T>>>,
-        shared: &'a S,
-    ) -> Interval<'a, T, S> {
-        Interval { rt, shared }
+impl<'a, T, S> Range<'a, T, S> {
+    fn new(rt: &'a mut Option<Box<Node<T>>>, shared: &'a S) -> Range<'a, T, S> {
+        Range { rt, shared }
     }
 }
 
-impl<'a, T: BasicOps, S> Interval<'a, T, S> {
-    fn consume(self) -> &'a mut Option<Box<Node<T>>> {
-        self.rt
-    }
+impl<'a, T: BasicOps, S> Range<'a, T, S> {
     // Not tested by OJ
     pub fn delete(&mut self) {
         self.rt.take();
@@ -375,11 +369,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         self.splay_first_lt_or_gt::<E, true>(key)
     }
 
-    fn get_interval_lt_or_gt<E>(
-        mut self,
-        key: &E,
-        gt: bool,
-    ) -> Interval<'a, T, S>
+    fn lt_or_gt<E>(mut self, key: &E, gt: bool) -> Range<'a, T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
@@ -387,30 +377,27 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         let found = self.splay_first_le_or_ge(key, !gt);
         if found {
             let rt = self.rt.as_mut().unwrap();
-            Interval::new(&mut rt.c[gt as usize], self.shared)
+            Range::new(&mut rt.c[gt as usize], self.shared)
         } else {
             self
         }
     }
-    pub fn get_interval_lt<E>(self, key: &E) -> Interval<'a, T, S>
+    pub fn lt<E>(self, key: &E) -> Range<'a, T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.get_interval_lt_or_gt(key, false)
+        self.lt_or_gt(key, false)
     }
-    fn get_interval_gt<E>(self, key: &E) -> Interval<'a, T, S>
+    fn gt<E>(self, key: &E) -> Range<'a, T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.get_interval_lt_or_gt(key, true)
+        self.lt_or_gt(key, true)
     }
 
-    fn get_interval_le_or_ge<E, const GE: bool>(
-        mut self,
-        key: &E,
-    ) -> Interval<'a, T, S>
+    fn le_or_ge<E, const GE: bool>(mut self, key: &E) -> Range<'a, T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
@@ -422,28 +409,28 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         };
         if found {
             let rt = self.rt.as_mut().unwrap();
-            Interval::new(&mut rt.c[GE as usize], self.shared)
+            Range::new(&mut rt.c[GE as usize], self.shared)
         } else {
             self
         }
     }
-    fn get_interval_le<E>(self, key: &E) -> Interval<'a, T, S>
+    fn le<E>(self, key: &E) -> Range<'a, T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.get_interval_le_or_ge::<E, false>(key)
+        self.le_or_ge::<E, false>(key)
     }
-    fn get_interval_ge<E>(self, key: &E) -> Interval<'a, T, S>
+    fn ge<E>(self, key: &E) -> Range<'a, T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.get_interval_le_or_ge::<E, true>(key)
+        self.le_or_ge::<E, true>(key)
     }
 }
 
-impl<'a, T: BasicOps + SubtreeCount, S> Interval<'a, T, S> {
+impl<'a, T: BasicOps + SubtreeCount, S> Range<'a, T, S> {
     fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
     where
         T::CountType: Copy,
@@ -602,22 +589,22 @@ where
 }
 
 impl<T: BasicOps, S> Splay<T, S> {
-    pub fn to_interval(&mut self) -> Interval<T, S> {
-        Interval::new(&mut self.root, &self.shared)
+    pub fn to_range(&mut self) -> Range<T, S> {
+        Range::new(&mut self.root, &self.shared)
     }
     fn __rotate_to_root(
         &mut self,
         x: Box<Node<T>>,
         path: Vec<(Box<Node<T>>, bool)>,
     ) {
-        self.to_interval().__rotate_to_root(x, path);
+        self.to_range().__rotate_to_root(x, path);
     }
     fn rotate_to_root(
         &mut self,
         x: Box<Node<T>>,
         path: Vec<(Box<Node<T>>, bool)>,
     ) {
-        self.to_interval().rotate_to_root(x, path);
+        self.to_range().rotate_to_root(x, path);
     }
 
     pub fn root_data(&self) -> Option<&T> {
@@ -628,7 +615,7 @@ impl<T: BasicOps, S> Splay<T, S> {
     where
         F: FnOnce(&mut T),
     {
-        self.to_interval().update_root_data(f)
+        self.to_range().update_root_data(f)
     }
     fn take_root(&mut self) -> Option<Box<Node<T>>> {
         let mut root = match self.root.take() {
@@ -826,14 +813,14 @@ impl<T: BasicOps, S> Splay<T, S> {
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.to_interval().splay_first_le(key)
+        self.to_range().splay_first_le(key)
     }
     pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.to_interval().splay_first_ge(key)
+        self.to_range().splay_first_ge(key)
     }
 
     fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
@@ -841,7 +828,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         S: Compare<T, E>,
         E: ?Sized,
     {
-        let found = self.to_interval().splay_first_le_or_ge(key, ge);
+        let found = self.to_range().splay_first_le_or_ge(key, ge);
         if !found {
             return None;
         }
@@ -869,7 +856,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         S: Compare<T, E>,
         E: ?Sized,
     {
-        let found = self.to_interval().splay_first_lt_or_gt::<E, GT>(key);
+        let found = self.to_range().splay_first_lt_or_gt::<E, GT>(key);
         if !found {
             return None;
         }
@@ -899,7 +886,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         E: ?Sized,
     {
         let (mut path, ans_depth) =
-            self.to_interval().path_to_first_le_or_ge(key, true);
+            self.to_range().path_to_first_le_or_ge(key, true);
         path.truncate(ans_depth);
         let mut ans = match path.pop() {
             Some((ans, _)) => ans,
@@ -910,62 +897,24 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.root = Some(ans);
     }
 
-    fn get_open_interval<L, R>(&mut self, left: &L, right: &R) -> Interval<T, S>
-    where
-        S: Compare<T, L> + Compare<T, R>,
-        L: ?Sized,
-        R: ?Sized,
-    {
-        self.to_interval()
-            .get_interval_gt(left)
-            .get_interval_lt(right)
-    }
-    pub fn get_closed_interval<L, R>(
-        &mut self,
-        left: &L,
-        right: &R,
-    ) -> Interval<T, S>
-    where
-        S: Compare<T, L> + Compare<T, R>,
-        L: ?Sized,
-        R: ?Sized,
-    {
-        self.to_interval()
-            .get_interval_ge(left)
-            .get_interval_le(right)
-    }
-    pub fn range<E, Range>(&mut self, range: &Range) -> Interval<T, S>
+    pub fn range<E, R>(&mut self, range: R) -> Range<T, S>
     where
         S: Compare<T, E>,
         E: ?Sized,
-        Range: RangeBounds<E>,
+        R: RangeBounds<E>,
     {
-        let mut interval = self.to_interval();
+        let mut ans = self.to_range();
         match range.start_bound() {
-            Bound::Included(key) => interval = interval.get_interval_ge(key),
-            Bound::Excluded(key) => interval = interval.get_interval_gt(key),
+            Bound::Included(key) => ans = ans.ge(key),
+            Bound::Excluded(key) => ans = ans.gt(key),
             Bound::Unbounded => {}
         }
         match range.end_bound() {
-            Bound::Included(key) => interval = interval.get_interval_le(key),
-            Bound::Excluded(key) => interval = interval.get_interval_lt(key),
+            Bound::Included(key) => ans = ans.le(key),
+            Bound::Excluded(key) => ans = ans.lt(key),
             Bound::Unbounded => {}
         }
-        interval
-    }
-
-    pub fn query_in_open_interval<L, R>(
-        &mut self,
-        left: &L,
-        right: &R,
-    ) -> Option<&T>
-    where
-        S: Compare<T, L> + Compare<T, R>,
-        L: ?Sized,
-        R: ?Sized,
-    {
-        let interval = self.get_open_interval(left, right);
-        interval.consume().as_ref().map(|x| &x.d)
+        ans
     }
 
     /// Warning: This function does not perform push_down.
@@ -1004,7 +953,7 @@ impl<T: BasicOps + SubtreeCount, S> Splay<T, S> {
             + Add<T::CountType, Output = T::SubtreeCountType>
             + SubAssign,
     {
-        self.to_interval().splay_kth(k)
+        self.to_range().splay_kth(k)
     }
 
     fn check_sanity_subtree<'a>(&self, rt: &Box<Node<T>>)
