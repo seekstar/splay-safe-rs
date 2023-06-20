@@ -783,17 +783,6 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.__rotate_to_root(prev, path);
         return false;
     }
-    pub fn delete<E>(&mut self, key: &E) -> bool
-    where
-        S: Compare<T, E>,
-        E: ?Sized,
-    {
-        let ret = self.find(key);
-        if ret {
-            self.take_root();
-        }
-        return ret;
-    }
     pub fn remove<E>(&mut self, key: &E) -> Option<T>
     where
         S: Compare<T, E>,
@@ -1199,9 +1188,6 @@ impl<T: Ord + Key<T>> RankTree<T> {
     }
     pub fn find(&mut self, key: &T) -> bool {
         self.rep.find(key)
-    }
-    pub fn delete(&mut self, key: &T) -> bool {
-        self.rep.delete(key)
     }
     pub fn splay_first_le(&mut self, key: &T) -> bool {
         self.rep.splay_first_le(key)
