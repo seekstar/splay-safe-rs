@@ -306,7 +306,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
     }
     // If found, then the node will be the root, and return true.
     // Otherwise return false.
-    fn find_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> bool
+    fn splay_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
@@ -314,19 +314,19 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
         self.rotate_ans_to_root(path, ans_depth)
     }
-    fn find_first_le<E>(&mut self, key: &E) -> bool
+    fn splay_first_le<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.find_first_le_or_ge(key, false)
+        self.splay_first_le_or_ge(key, false)
     }
-    pub fn find_first_ge<E>(&mut self, key: &E) -> bool
+    pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.find_first_le_or_ge(key, true)
+        self.splay_first_le_or_ge(key, true)
     }
 
     fn path_to_first_less_or_greater<E, const GT: bool>(
@@ -351,7 +351,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         }
         (path, ans_depth)
     }
-    fn find_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
+    fn splay_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
@@ -360,19 +360,19 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
             self.path_to_first_less_or_greater::<E, GT>(key);
         self.rotate_ans_to_root(path, ans_depth)
     }
-    fn find_first_lt<E>(&mut self, key: &E) -> bool
+    fn splay_first_lt<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.find_first_lt_or_gt::<E, false>(key)
+        self.splay_first_lt_or_gt::<E, false>(key)
     }
-    pub fn find_first_gt<E>(&mut self, key: &E) -> bool
+    pub fn splay_first_gt<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.find_first_lt_or_gt::<E, true>(key)
+        self.splay_first_lt_or_gt::<E, true>(key)
     }
 
     fn get_interval_lt_or_gt<E>(
@@ -384,7 +384,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         S: Compare<T, E>,
         E: ?Sized,
     {
-        let found = self.find_first_le_or_ge(key, !gt);
+        let found = self.splay_first_le_or_ge(key, !gt);
         if found {
             let rt = self.rt.as_mut().unwrap();
             Interval::new(&mut rt.c[gt as usize], self.shared)
@@ -416,9 +416,9 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
         E: ?Sized,
     {
         let found = if GE {
-            self.find_first_lt(key)
+            self.splay_first_lt(key)
         } else {
-            self.find_first_gt(key)
+            self.splay_first_gt(key)
         };
         if found {
             let rt = self.rt.as_mut().unwrap();
@@ -444,7 +444,7 @@ impl<'a, T: BasicOps, S> Interval<'a, T, S> {
 }
 
 impl<'a, T: BasicOps + SubtreeCount, S> Interval<'a, T, S> {
-    fn find_kth(&mut self, mut k: T::SubtreeCountType) -> bool
+    fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
     where
         T::CountType: Copy,
         T::SubtreeCountType: Ord
@@ -807,7 +807,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         }
     }
 
-    fn find_smallest_or_largest(&mut self, is_largest: bool) {
+    fn splay_smallest_or_largest(&mut self, is_largest: bool) {
         let mut path = Vec::new();
         find_smallest_or_largest(self.root.take(), is_largest, &mut path);
         let x = match path.pop() {
@@ -817,34 +817,34 @@ impl<T: BasicOps, S> Splay<T, S> {
         self.__rotate_to_root(x, path);
     }
     pub fn pop_smallest(&mut self) -> Option<T> {
-        self.find_smallest_or_largest(false);
+        self.splay_smallest_or_largest(false);
         self.pop_root()
     }
     pub fn pop_largest(&mut self) -> Option<T> {
-        self.find_smallest_or_largest(true);
+        self.splay_smallest_or_largest(true);
         self.pop_root()
     }
     fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
-        self.find_smallest_or_largest(is_largest);
+        self.splay_smallest_or_largest(is_largest);
         self.root_data()
     }
     pub fn query_smallest(&mut self) -> Option<&T> {
         self.query_smallest_or_largest(false)
     }
 
-    pub fn find_first_le<E>(&mut self, key: &E) -> bool
+    pub fn splay_first_le<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.to_interval().find_first_le(key)
+        self.to_interval().splay_first_le(key)
     }
-    pub fn find_first_ge<E>(&mut self, key: &E) -> bool
+    pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
     where
         S: Compare<T, E>,
         E: ?Sized,
     {
-        self.to_interval().find_first_ge(key)
+        self.to_interval().splay_first_ge(key)
     }
 
     fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
@@ -852,7 +852,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         S: Compare<T, E>,
         E: ?Sized,
     {
-        let found = self.to_interval().find_first_le_or_ge(key, ge);
+        let found = self.to_interval().splay_first_le_or_ge(key, ge);
         if !found {
             return None;
         }
@@ -880,7 +880,7 @@ impl<T: BasicOps, S> Splay<T, S> {
         S: Compare<T, E>,
         E: ?Sized,
     {
-        let found = self.to_interval().find_first_lt_or_gt::<E, GT>(key);
+        let found = self.to_interval().splay_first_lt_or_gt::<E, GT>(key);
         if !found {
             return None;
         }
@@ -1006,7 +1006,7 @@ impl<T: BasicOps + SubtreeCount, S> Splay<T, S> {
     // If found, then the node will be the root, and return true.
     // If not found, then the last accessed node will be the root, and return
     // false.
-    pub fn find_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
+    pub fn splay_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
     where
         T::CountType: Copy,
         T::SubtreeCountType: Ord
@@ -1015,7 +1015,7 @@ impl<T: BasicOps + SubtreeCount, S> Splay<T, S> {
             + Add<T::CountType, Output = T::SubtreeCountType>
             + SubAssign,
     {
-        self.to_interval().find_kth(k)
+        self.to_interval().splay_kth(k)
     }
 
     fn check_sanity_subtree<'a>(&self, rt: &Box<Node<T>>)
@@ -1203,18 +1203,18 @@ impl<T: Ord + Key<T>> RankTree<T> {
     pub fn delete(&mut self, key: &T) -> bool {
         self.rep.delete(key)
     }
-    pub fn find_first_le(&mut self, key: &T) -> bool {
-        self.rep.find_first_le(key)
+    pub fn splay_first_le(&mut self, key: &T) -> bool {
+        self.rep.splay_first_le(key)
     }
-    pub fn find_first_ge(&mut self, key: &T) -> bool {
-        self.rep.find_first_ge(key)
+    pub fn splay_first_ge(&mut self, key: &T) -> bool {
+        self.rep.splay_first_ge(key)
     }
     // The remaining smallest will be the root.
     pub fn del_smaller(&mut self, key: &T) {
         self.rep.del_smaller(key)
     }
     pub fn query_kth(&mut self, k: u32) -> Option<&T> {
-        if self.rep.find_kth(k) {
+        if self.rep.splay_kth(k) {
             self.root_key()
         } else {
             None
