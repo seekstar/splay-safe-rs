@@ -817,7 +817,7 @@ pub struct SplayWithKey<T: WithKey, C = Natural<<T as WithKey>::KeyType>> {
     comparator: C,
 }
 impl<T: WithKey, C> SplayWithKey<T, C> {
-    fn with_comparator(comparator: C) -> Self {
+    pub fn with_comparator(comparator: C) -> Self {
         Self {
             splay: Splay::new(),
             comparator,
@@ -837,6 +837,15 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         Self {
             splay: Splay::from_with_constructor(v, constructor),
             comparator: C::default(),
+        }
+    }
+    pub fn from_with_comparator<E>(v: Vec<E>, comparator: C) -> Self
+    where
+        T: From<E>,
+    {
+        Self {
+            splay: Splay::from(v),
+            comparator,
         }
     }
 
