@@ -945,7 +945,7 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         }
     }
 
-    pub fn find<E>(&mut self, key: &E) -> bool
+    pub fn splay<E>(&mut self, key: &E) -> bool
     where
         C: Compare<T::KeyType, E>,
         E: ?Sized,
@@ -976,7 +976,7 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         C: Compare<T::KeyType, E>,
         E: ?Sized,
     {
-        let ret = self.find(key);
+        let ret = self.splay(key);
         if ret {
             Some(self.splay.take_root().unwrap().d)
         } else {
@@ -1286,8 +1286,8 @@ impl<T: Ord + WithKey> RankTree<T> {
     pub fn insert(&mut self, key: T) {
         self.rep.insert_owned_key_or_inc_cnt(key);
     }
-    pub fn find(&mut self, key: &T) -> bool {
-        self.rep.find(key)
+    pub fn splay(&mut self, key: &T) -> bool {
+        self.rep.splay(key)
     }
     pub fn splay_first_le(&mut self, key: &T) -> bool {
         self.rep.splay_first_le(key)

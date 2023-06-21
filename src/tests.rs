@@ -524,7 +524,7 @@ mod online_judge {
             });
         }
         fn point_query(splay: &mut SplayWithKey<SplayData>, x: i32) -> i32 {
-            assert!(splay.find(&x));
+            assert!(splay.splay(&x));
             splay.root_data().unwrap().other.value
         }
         let mut splay = SplayWithKey::from_with_constructor(
