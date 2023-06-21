@@ -582,7 +582,8 @@ pub trait WithKey: BasicOps {
 pub trait WithValue: WithKey {
     type ValueType;
     fn value(&self) -> &Self::ValueType;
-    fn value_mut(&mut self) -> &mut Self::ValueType;
+    fn key_immut_value_mut(&mut self)
+        -> (&Self::KeyType, &mut Self::ValueType);
 }
 macro_rules! impl_with_key {
     ($t:ty) => {
@@ -798,13 +799,14 @@ impl<'a, T: WithValue, C> KeyRange<'a, T, C> {
     // Return updated or not
     pub fn update_root_value<F>(&mut self, f: F) -> bool
     where
-        F: FnOnce(&mut T::ValueType),
+        F: FnOnce(&T::KeyType, &mut T::ValueType),
     {
         let root = match self.range.rt.as_mut() {
             Some(root) => root,
             None => return false,
         };
-        f(root.d.value_mut());
+        let kv = root.d.key_immut_value_mut();
+        f(kv.0, kv.1);
         root.push_up();
         return true;
     }
@@ -1120,7 +1122,7 @@ impl<T: WithValue, C> SplayWithKey<T, C> {
     // Return updated or not
     pub fn update_root_value<F>(&mut self, f: F) -> bool
     where
-        F: FnOnce(&mut T::ValueType),
+        F: FnOnce(&T::KeyType, &mut T::ValueType),
     {
         self.to_range().update_root_value(f)
     }
@@ -1214,8 +1216,10 @@ impl<T: Ord> WithValue for RankTreeData<T> {
     fn value(&self) -> &Self::ValueType {
         &self.value
     }
-    fn value_mut(&mut self) -> &mut Self::ValueType {
-        &mut self.value
+    fn key_immut_value_mut(
+        &mut self,
+    ) -> (&Self::KeyType, &mut Self::ValueType) {
+        (&self.key, &mut self.value)
     }
 }
 

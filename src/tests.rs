@@ -505,8 +505,10 @@ mod online_judge {
             fn value(&self) -> &Self::ValueType {
                 &self.other
             }
-            fn value_mut(&mut self) -> &mut Self::ValueType {
-                &mut self.other
+            fn key_immut_value_mut(
+                &mut self,
+            ) -> (&Self::KeyType, &mut Self::ValueType) {
+                (&self.key, &mut self.other)
             }
         }
         fn range_add(
@@ -516,9 +518,9 @@ mod online_judge {
             k: i32,
         ) {
             let mut range = splay.range((Included(x), Included(y)));
-            range.update_root_value(|d| {
-                d.value += k;
-                d.lazy += k;
+            range.update_root_value(|_, v| {
+                v.value += k;
+                v.lazy += k;
             });
         }
         fn point_query(splay: &mut SplayWithKey<SplayData>, x: i32) -> i32 {
