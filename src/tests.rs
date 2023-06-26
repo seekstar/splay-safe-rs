@@ -15,7 +15,7 @@ mod rand_tests {
     use std::ops::Bound::{self, Excluded, Unbounded};
     use std::ops::RangeBounds;
 
-    use crate::{BasicOps, SplayWithKey, WithKey};
+    use crate::{BasicOps, BasicOpsWithKey, SplayWithKey};
 
     fn rand_digits<R: Rng>(rng: &mut R, num: usize) -> Vec<u8> {
         let dist = Uniform::new(b'0', b'9' + 1);
@@ -26,13 +26,10 @@ mod rand_tests {
         ret
     }
 
-    struct Env<'a, 'b, 'c, T: WithKey>
-    where
-        T::KeyType: Ord,
-    {
+    struct Env<'a, 'b, 'c, K: Ord, V: BasicOpsWithKey<K>> {
         rng: &'a mut StdRng,
-        splay: &'b mut SplayWithKey<T>,
-        btree: &'c mut BTreeMap<T::KeyType, T>,
+        splay: &'b mut SplayWithKey<K, V>,
+        btree: &'c mut BTreeMap<K, V>,
         key_len: usize,
         val_len: usize,
     }
@@ -52,18 +49,18 @@ mod rand_tests {
             }
         }
     }
-    fn try_insert<'a, 'b, 'c, T>(
-        env: &mut Env<'a, 'b, 'c, T>,
-        key: T::KeyType,
-        value: T,
+    fn try_insert<'a, 'b, 'c, K, V>(
+        env: &mut Env<'a, 'b, 'c, K, V>,
+        key: K,
+        value: V,
     ) where
-        T::KeyType: Ord + Clone,
-        T: WithKey + Clone,
+        K: Ord + Clone,
+        V: Clone + BasicOpsWithKey<K>,
     {
         let mut std_exists = false;
-        let succeed = env.splay.insert(value.clone());
+        let succeed = env.splay.insert(key.clone(), value.clone());
         env.btree
-            .entry(key.clone())
+            .entry(key)
             .and_modify(|_| std_exists = true)
             .or_insert_with(|| {
                 std_exists = false;
@@ -71,76 +68,69 @@ mod rand_tests {
             });
         assert_eq!(std_exists, !succeed);
     }
-    fn query_first_lt<'a, 'b, 'c, T>(
-        env: &mut Env<'a, 'b, 'c, T>,
-        key: &T::KeyType,
+    fn query_first_lt<'a, 'b, 'c, K, V>(
+        env: &mut Env<'a, 'b, 'c, K, V>,
+        key: &K,
     ) where
-        T::KeyType: Ord + Clone + std::fmt::Debug,
-        T: BasicOps + WithKey + Clone + std::fmt::Debug + std::cmp::PartialEq,
+        K: Ord + Clone + std::fmt::Debug,
+        V: BasicOpsWithKey<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
     {
         let std_ret = env.btree.range((Unbounded, Excluded(key))).next_back();
         let ret = env.splay.query_first_lt(key);
         if let Some((key, value)) = std_ret {
             assert!(ret.is_some());
             let ret = ret.unwrap();
-            assert_eq!(ret.key(), key);
-            assert_eq!(ret, value);
+            assert_eq!(&ret.key, key);
+            assert_eq!(&ret.value, value);
         } else {
             assert!(ret.is_none());
         }
     }
-    fn query_first_gt<'a, 'b, 'c, T>(
-        env: &mut Env<'a, 'b, 'c, T>,
-        key: &T::KeyType,
+    fn query_first_gt<'a, 'b, 'c, K, V>(
+        env: &mut Env<'a, 'b, 'c, K, V>,
+        key: &K,
     ) where
-        T::KeyType: Ord + Clone + std::fmt::Debug,
-        T: BasicOps + WithKey + Clone + std::fmt::Debug + std::cmp::PartialEq,
+        K: Ord + Clone + std::fmt::Debug,
+        V: BasicOps + Clone + std::fmt::Debug + std::cmp::PartialEq,
     {
         let std_ret = env.btree.range((Excluded(key), Unbounded)).next();
         let ret = env.splay.query_first_gt(key);
         if let Some((key, value)) = std_ret {
             assert!(ret.is_some());
             let ret = ret.unwrap();
-            assert_eq!(ret.key(), key);
-            assert_eq!(ret, value);
+            assert_eq!(&ret.key, key);
+            assert_eq!(&ret.value, value);
         } else {
             assert!(ret.is_none());
         }
     }
-    fn query_range<'a, 'b, 'c, T, Range>(
-        env: &mut Env<'a, 'b, 'c, T>,
+    fn query_range<'a, 'b, 'c, K, V, Range>(
+        env: &mut Env<'a, 'b, 'c, K, V>,
         range: Range,
     ) where
-        T::KeyType: Ord + Clone + std::fmt::Debug,
-        T: BasicOps + WithKey + Clone + std::fmt::Debug + std::cmp::PartialEq,
-        Range: RangeBounds<T::KeyType> + Clone,
+        K: Ord + Clone + std::fmt::Debug,
+        V: BasicOpsWithKey<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
+        Range: RangeBounds<K> + Clone,
     {
-        let std_ret: Vec<&T> = env
-            .btree
-            .range(range.clone())
-            .into_iter()
-            .map(|p| p.1)
-            .collect();
+        let std_ret: Vec<(&K, &V)> =
+            env.btree.range(range.clone()).into_iter().collect();
         let range = env.splay.range(range);
-        let ret = range.collect_data();
+        let ret: Vec<(&K, &V)> = range
+            .collect_data()
+            .iter()
+            .map(|kv| (&kv.key, &kv.value))
+            .collect();
         assert_eq!(std_ret, ret);
     }
     fn rand_op(mut num: OpNum, key_len: usize, val_len: usize) {
         #[derive(Clone, Debug, PartialEq)]
-        struct SplayData {
-            key: Vec<u8>,
+        struct SplayValue {
             value: Vec<u8>,
         }
-        impl WithKey for SplayData {
-            type KeyType = Vec<u8>;
-            fn key(&self) -> &Vec<u8> {
-                &self.key
-            }
-        }
-        impl BasicOps for SplayData {}
+        impl BasicOps for SplayValue {}
         let mut rng = StdRng::seed_from_u64(233);
-        let mut splay = SplayWithKey::<SplayData>::new();
-        let mut btree = BTreeMap::<Vec<u8>, SplayData>::new();
+        let mut splay = SplayWithKey::<Vec<u8>, SplayValue>::new();
+        let mut btree = BTreeMap::<Vec<u8>, SplayValue>::new();
         let mut env = Env {
             rng: &mut rng,
             splay: &mut splay,
@@ -156,11 +146,11 @@ mod rand_tests {
             if rand_num < num.insert {
                 num.insert -= 1;
                 tot -= 1;
-                let data = SplayData {
-                    key: rand_digits(env.rng, env.key_len),
+                let key = rand_digits(env.rng, env.key_len);
+                let value = SplayValue {
                     value: rand_digits(env.rng, env.val_len),
                 };
-                try_insert(&mut env, data.key.clone(), data);
+                try_insert(&mut env, key, value);
                 continue;
             }
             rand_num -= num.insert;
@@ -314,8 +304,7 @@ mod rand_tests {
 #[cfg(test)]
 mod online_judge {
     use crate::{
-        BasicOps, Count, CountAdd, CountSub, RankTree, SplayWithKey, WithKey,
-        WithValue,
+        BasicOps, Count, CountAdd, CountSub, KeyValue, RankTree, SplayWithKey,
     };
     use std::ops::Bound::Included;
 
@@ -341,7 +330,7 @@ mod online_judge {
         let d =
             |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>, x| {
                 destroyed.push(x);
-                splay.insert(x);
+                splay.insert(x, ());
             };
         let r = |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>| {
             let x = destroyed.pop().unwrap();
@@ -349,11 +338,11 @@ mod online_judge {
         };
         let q = |splay: &mut SplayWithKey<u32>, x, expected| {
             let begin = match splay.query_first_le(&x) {
-                Some(d) => d + 1,
+                Some(d) => d.key + 1,
                 None => 1,
             };
             let end = match splay.query_first_ge(&x) {
-                Some(d) => *d,
+                Some(d) => d.key,
                 None => n + 1,
             };
             let ans = if end <= begin { 0 } else { end - begin };
@@ -372,52 +361,43 @@ mod online_judge {
 
     #[test]
     fn luogu_1090() {
-        struct SplayData {
-            key: i32,
+        struct SplayValue {
             cnt: u32,
         }
-        impl BasicOps for SplayData {
-            fn push_up(&mut self, _: Option<&Self>, _: Option<&Self>) {}
-        }
-        impl WithKey for SplayData {
-            type KeyType = i32;
-            fn key(&self) -> &i32 {
-                &self.key
+        impl BasicOps for SplayValue {}
+        impl Default for SplayValue {
+            fn default() -> Self {
+                SplayValue { cnt: 1 }
             }
         }
-        impl From<i32> for SplayData {
-            fn from(key: i32) -> Self {
-                SplayData { key, cnt: 1 }
-            }
-        }
-        impl Count for SplayData {
+        impl Count for SplayValue {
             type CountType = u32;
             fn cnt(&self) -> &Self::CountType {
                 &self.cnt
             }
         }
-        impl CountAdd for SplayData {
+        impl CountAdd for SplayValue {
             fn cnt_add(&mut self, delta: &Self::CountType) {
                 self.cnt += delta;
             }
         }
-        impl CountSub for SplayData {
+        impl CountSub for SplayValue {
             fn cnt_sub(&mut self, delta: &Self::CountType) {
                 self.cnt -= delta;
             }
         }
-        let mut splay = SplayWithKey::<SplayData>::from(vec![1, 2, 9]);
-        assert_eq!(splay.query_smallest().unwrap().key(), &1);
+        let mut splay = SplayWithKey::<i32, SplayValue>::from(vec![1, 2, 9]);
+        assert_eq!(splay.query_smallest().unwrap().key, 1);
         assert!(splay.deref_root());
-        assert_eq!(splay.query_smallest().unwrap().key(), &2);
+        assert_eq!(splay.query_smallest().unwrap().key, 2);
         assert!(splay.deref_root());
-        splay.insert_owned_key_or_inc_cnt(3);
-        assert_eq!(splay.query_smallest().unwrap().key(), &3);
+        splay.insert_or_inc_cnt(3);
+        assert_eq!(splay.query_smallest().unwrap().key, 3);
         assert!(splay.deref_root());
-        assert_eq!(splay.query_smallest().unwrap().key(), &9);
+        assert_eq!(splay.query_smallest().unwrap().key, 9);
         assert!(splay.deref_root());
-        splay.insert_owned_key_or_inc_cnt(12);
-        assert_eq!(splay.query_smallest().unwrap().key(), &12);
+        splay.insert_or_inc_cnt(12);
+        assert_eq!(splay.query_smallest().unwrap().key, 12);
         assert!(splay.deref_root());
         assert!(splay.query_smallest().is_none());
     }
@@ -425,38 +405,58 @@ mod online_judge {
     #[test]
     fn luogu_2073() {
         #[derive(PartialEq, Debug)]
-        struct SplayData {
-            key: i32,
+        struct SplayValue {
             value: i32,
         }
-        impl BasicOps for SplayData {
-            fn push_up(&mut self, _: Option<&Self>, _: Option<&Self>) {}
-        }
-        impl WithKey for SplayData {
-            type KeyType = i32;
-            fn key(&self) -> &i32 {
-                &self.key
+        impl From<i32> for SplayValue {
+            fn from(value: i32) -> Self {
+                Self { value }
             }
         }
-        let mut splay = SplayWithKey::<SplayData>::new();
-        assert!(splay.insert_with(1, |key| SplayData { key, value: 1 }));
-        assert!(splay.insert_with(5, |key| SplayData { key, value: 2 }));
-        assert_eq!(splay.pop_largest(), Some(SplayData { key: 5, value: 2 }));
-        assert!(splay.insert_with(3, |key| SplayData { key, value: 3 }));
-        assert_eq!(splay.pop_smallest(), Some(SplayData { key: 1, value: 1 }));
-        assert!(splay.insert_with(2, |key| SplayData { key, value: 5 }));
+        impl BasicOps for SplayValue {}
+        let mut splay = SplayWithKey::<i32, SplayValue>::new();
+        assert!(splay.insert(1, 1.into()));
+        assert!(splay.insert(5, 2.into()));
+        assert_eq!(
+            splay.pop_largest(),
+            Some(KeyValue {
+                key: 5,
+                value: 2.into()
+            })
+        );
+        assert!(splay.insert(3, 3.into()));
+        assert_eq!(
+            splay.pop_smallest(),
+            Some(KeyValue {
+                key: 1,
+                value: 1.into()
+            })
+        );
+        assert!(splay.insert(2, 5.into()));
         assert_eq!(
             splay.collect_data(),
             vec![
-                &SplayData { key: 2, value: 5 },
-                &SplayData { key: 3, value: 3 },
+                &KeyValue {
+                    key: 2,
+                    value: 5.into()
+                },
+                &KeyValue {
+                    key: 3,
+                    value: 3.into()
+                },
             ]
         );
         assert_eq!(
             splay.take_all_data(),
             vec![
-                SplayData { key: 2, value: 5 },
-                SplayData { key: 3, value: 3 },
+                KeyValue {
+                    key: 2,
+                    value: 5.into()
+                },
+                KeyValue {
+                    key: 3,
+                    value: 3.into()
+                },
             ]
         );
     }
@@ -467,48 +467,27 @@ mod online_judge {
             value: i32,
             lazy: i32,
         }
-        struct SplayData {
-            key: i32,
-            other: SplayValue,
-        }
-        impl BasicOps for SplayData {
+        impl BasicOps for SplayValue {
             fn push_down(
                 &mut self,
                 lc: Option<&mut Self>,
                 rc: Option<&mut Self>,
             ) {
-                if self.other.lazy != 0 {
+                if self.lazy != 0 {
                     if let Some(c) = lc {
-                        c.other.value += self.other.lazy;
-                        c.other.lazy += self.other.lazy;
+                        c.value += self.lazy;
+                        c.lazy += self.lazy;
                     }
                     if let Some(c) = rc {
-                        c.other.value += self.other.lazy;
-                        c.other.lazy += self.other.lazy;
+                        c.value += self.lazy;
+                        c.lazy += self.lazy;
                     }
-                    self.other.lazy = 0;
+                    self.lazy = 0;
                 }
             }
         }
-        impl WithKey for SplayData {
-            type KeyType = i32;
-            fn key(&self) -> &i32 {
-                &self.key
-            }
-        }
-        impl WithValue for SplayData {
-            type ValueType = SplayValue;
-            fn value(&self) -> &Self::ValueType {
-                &self.other
-            }
-            fn key_immut_value_mut(
-                &mut self,
-            ) -> (&Self::KeyType, &mut Self::ValueType) {
-                (&self.key, &mut self.other)
-            }
-        }
         fn range_add(
-            splay: &mut SplayWithKey<SplayData>,
+            splay: &mut SplayWithKey<i32, SplayValue>,
             x: i32,
             y: i32,
             k: i32,
@@ -519,15 +498,18 @@ mod online_judge {
                 v.lazy += k;
             });
         }
-        fn point_query(splay: &mut SplayWithKey<SplayData>, x: i32) -> i32 {
+        fn point_query(
+            splay: &mut SplayWithKey<i32, SplayValue>,
+            x: i32,
+        ) -> i32 {
             assert!(splay.splay(&x));
-            splay.root_data().unwrap().other.value
+            splay.root_data().unwrap().value.value
         }
-        let mut splay = SplayWithKey::from_with_constructor(
+        let mut splay = SplayWithKey::construct(
             vec![(1, 1), (2, 5), (3, 4), (4, 2), (5, 3)],
-            |(key, value)| SplayData {
+            |(key, value)| KeyValue {
                 key,
-                other: SplayValue { value, lazy: 0 },
+                value: SplayValue { value, lazy: 0 },
             },
         );
         // 1, 5, 4, 2, 3
@@ -550,7 +532,7 @@ mod online_judge {
             range
                 .take_all_data()
                 .iter()
-                .map(|x| (x.key, x.other.value))
+                .map(|x| (x.key, x.value.value))
                 .collect::<Vec<_>>(),
             vec![(2, 6)],
         );
@@ -559,7 +541,7 @@ mod online_judge {
             splay
                 .collect_data()
                 .iter()
-                .map(|x| (x.key, x.other.value))
+                .map(|x| (x.key, x.value.value))
                 .collect::<Vec<_>>(),
             vec![(1, 0), (3, 12), (4, 10), (5, 9)],
         );
@@ -569,7 +551,7 @@ mod online_judge {
             range
                 .take_all_data()
                 .iter()
-                .map(|x| (x.key, x.other.value))
+                .map(|x| (x.key, x.value.value))
                 .collect::<Vec<_>>(),
             vec![(3, 12), (4, 10)],
         );
@@ -578,7 +560,7 @@ mod online_judge {
             splay
                 .collect_data()
                 .iter()
-                .map(|x| (x.key, x.other.value))
+                .map(|x| (x.key, x.value.value))
                 .collect::<Vec<_>>(),
             vec![(1, 0), (5, 9)],
         );
@@ -588,7 +570,7 @@ mod online_judge {
             range
                 .take_all_data()
                 .iter()
-                .map(|x| (x.key, x.other.value))
+                .map(|x| (x.key, x.value.value))
                 .collect::<Vec<_>>(),
             vec![(1, 0), (5, 9)],
         );
@@ -597,12 +579,11 @@ mod online_judge {
 
     #[test]
     fn luogu_1428() {
-        struct SplayData {
-            key: u8,
+        struct SplayValue {
             cnt: u8,
             scnt: u8,
         }
-        impl BasicOps for SplayData {
+        impl BasicOps for SplayValue {
             fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
                 self.scnt = self.cnt;
                 if let Some(c) = lc {
@@ -613,50 +594,43 @@ mod online_judge {
                 }
             }
         }
-        impl WithKey for SplayData {
-            type KeyType = u8;
-            fn key(&self) -> &u8 {
-                &self.key
+        impl Default for SplayValue {
+            fn default() -> Self {
+                SplayValue { cnt: 1, scnt: 1 }
             }
         }
-        impl From<u8> for SplayData {
-            fn from(key: u8) -> Self {
-                SplayData {
-                    key,
-                    cnt: 1,
-                    scnt: 1,
-                }
-            }
-        }
-        impl Count for SplayData {
+        impl Count for SplayValue {
             type CountType = u8;
             fn cnt(&self) -> &Self::CountType {
                 &self.cnt
             }
         }
-        impl CountAdd for SplayData {
+        impl CountAdd for SplayValue {
             fn cnt_add(&mut self, delta: &Self::CountType) {
                 self.cnt += delta;
             }
         }
-        fn num_less_than(splay: &mut SplayWithKey<SplayData>, x: u8) -> u8 {
+        fn num_less_than(
+            splay: &mut SplayWithKey<u8, SplayValue>,
+            x: u8,
+        ) -> u8 {
             match splay.to_range().lt(&x).root_data() {
-                Some(d) => d.scnt,
+                Some(d) => d.value.scnt,
                 None => 0,
             }
         }
-        let mut splay = SplayWithKey::<SplayData>::new();
+        let mut splay = SplayWithKey::<u8, SplayValue>::new();
         assert_eq!(num_less_than(&mut splay, 4), 0);
-        splay.insert_owned_key_or_inc_cnt(4);
+        splay.insert_or_inc_cnt(4);
         assert_eq!(num_less_than(&mut splay, 3), 0);
-        splay.insert_owned_key_or_inc_cnt(3);
+        splay.insert_or_inc_cnt(3);
         assert_eq!(num_less_than(&mut splay, 0), 0);
-        splay.insert_owned_key_or_inc_cnt(0);
+        splay.insert_or_inc_cnt(0);
         assert_eq!(num_less_than(&mut splay, 5), 3);
-        splay.insert_owned_key_or_inc_cnt(5);
+        splay.insert_or_inc_cnt(5);
         assert_eq!(num_less_than(&mut splay, 1), 1);
-        splay.insert_owned_key_or_inc_cnt(1);
+        splay.insert_or_inc_cnt(1);
         assert_eq!(num_less_than(&mut splay, 2), 2);
-        splay.insert_owned_key_or_inc_cnt(2);
+        splay.insert_or_inc_cnt(2);
     }
 }

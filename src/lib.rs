@@ -13,6 +13,7 @@ use num_traits::{One, Zero};
 use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
+use std::fmt::Display;
 
 pub trait BasicOps {
     #[allow(unused)]
@@ -20,6 +21,7 @@ pub trait BasicOps {
     #[allow(unused)]
     fn push_down(&mut self, lc: Option<&mut Self>, rc: Option<&mut Self>) {}
 }
+impl BasicOps for () {}
 
 #[derive(Clone, PartialEq)]
 struct Node<T> {
@@ -523,19 +525,23 @@ impl<T: SubtreeCount> Splay<T> {
     }
 }
 
-fn __print_subtree_non_empty<T>(rt: &Node<T>, str: &mut String)
-where
-    T: BasicOps + std::fmt::Display,
+fn __print_subtree_non_empty<T, F>(
+    rt: &Node<T>,
+    str: &mut String,
+    data_to_string: F,
+) where
+    T: BasicOps,
+    F: Fn(&T) -> String + Clone,
 {
     let ori_len = str.len();
-    let node = format!("{}", rt.d);
+    let node = data_to_string(&rt.d);
     let len = node.len();
     print!("{}", node);
     print!("---");
     // str.push_str(&String::from_iter(std::iter::repeat(' ').take(len)));
     str.push_str(&std::iter::repeat(' ').take(len).collect::<String>());
     str.push_str(" | ");
-    __print_subtree(&rt.c[0], str);
+    __print_subtree(&rt.c[0], str, data_to_string.clone());
     println!("{}", str);
     let len = str.len();
     unsafe {
@@ -548,87 +554,173 @@ where
         str.as_bytes_mut()[len - 1] = b' ';
         str.as_bytes_mut()[len - 2] = b' ';
     }
-    __print_subtree(&rt.c[1], str);
+    __print_subtree(&rt.c[1], str, data_to_string);
 
     str.truncate(ori_len);
 }
-fn __print_subtree<T>(rt: &Option<Box<Node<T>>>, str: &mut String)
-where
-    T: BasicOps + std::fmt::Display,
+fn __print_subtree<T, F>(
+    rt: &Option<Box<Node<T>>>,
+    str: &mut String,
+    data_to_string: F,
+) where
+    T: BasicOps,
+    F: Fn(&T) -> String + Clone,
 {
     if let Some(node) = rt {
-        __print_subtree_non_empty(node, str);
+        __print_subtree_non_empty(node, str, data_to_string);
     } else {
         println!("/\\");
     }
 }
-fn print_subtree<T>(rt: &Option<Box<Node<T>>>)
+fn print_subtree<T, F>(rt: &Option<Box<Node<T>>>, data_to_string: F)
 where
-    T: BasicOps + std::fmt::Display,
+    T: BasicOps,
+    F: Fn(&T) -> String + Clone,
 {
-    __print_subtree(rt, &mut String::new());
+    __print_subtree(rt, &mut String::new(), data_to_string);
 }
 
-impl<T: BasicOps + std::fmt::Display> Splay<T> {
+impl<T: BasicOps> Splay<T> {
+    pub fn print_tree_with<F>(&self, data_to_string: F)
+    where
+        F: Fn(&T) -> String + Clone,
+    {
+        print_subtree(&self.root, data_to_string);
+    }
+}
+fn default_data_to_string<T>(data: &T) -> String
+where
+    T: Display,
+{
+    format!("{}", data)
+}
+impl<T: BasicOps + Display> Splay<T> {
     pub fn print_tree(&self) {
-        print_subtree(&self.root);
+        self.print_tree_with(default_data_to_string);
     }
 }
 
-pub trait WithKey: BasicOps {
-    type KeyType;
-    fn key(&self) -> &Self::KeyType;
+pub struct KeyMutValue<'a, K: Ord, V: BasicOpsWithKey<K>> {
+    pub key: &'a K,
+    pub value: &'a mut V,
 }
-pub trait WithValue: WithKey {
-    type ValueType;
-    fn value(&self) -> &Self::ValueType;
-    fn key_immut_value_mut(&mut self)
-        -> (&Self::KeyType, &mut Self::ValueType);
+pub trait BasicOpsWithKey<K: Ord>: Sized {
+    #[allow(unused)]
+    fn push_down<'a, 'b>(
+        &mut self,
+        k: &K,
+        lc: Option<KeyMutValue<'a, K, Self>>,
+        rc: Option<KeyMutValue<'b, K, Self>>,
+    ) where
+        Self: Sized,
+    {
+    }
+    #[allow(unused)]
+    fn push_up(
+        &mut self,
+        k: &K,
+        lc: Option<&KeyValue<K, Self>>,
+        rc: Option<&KeyValue<K, Self>>,
+    ) {
+    }
 }
-macro_rules! impl_with_key {
-    ($t:ty) => {
-        impl BasicOps for $t {}
-        impl WithKey for $t {
-            type KeyType = $t;
-            fn key(&self) -> &$t {
-                self
-            }
-        }
-    };
+impl<K: Ord, V: BasicOps> BasicOpsWithKey<K> for V {
+    fn push_down<'a, 'b>(
+        &mut self,
+        _k: &K,
+        lc: Option<KeyMutValue<'a, K, Self>>,
+        rc: Option<KeyMutValue<'b, K, Self>>,
+    ) where
+        Self: Sized,
+    {
+        <Self as BasicOps>::push_down(
+            self,
+            lc.map(|kv| kv.value),
+            rc.map(|kv| kv.value),
+        )
+    }
+    fn push_up(
+        &mut self,
+        _k: &K,
+        lc: Option<&KeyValue<K, Self>>,
+        rc: Option<&KeyValue<K, Self>>,
+    ) {
+        <Self as BasicOps>::push_up(
+            self,
+            lc.map(|kv| &kv.value),
+            rc.map(|kv| &kv.value),
+        )
+    }
 }
-impl_with_key!(i8);
-impl_with_key!(u8);
-impl_with_key!(i16);
-impl_with_key!(u16);
-impl_with_key!(i32);
-impl_with_key!(u32);
-impl_with_key!(i64);
-impl_with_key!(u64);
-impl_with_key!(i128);
-impl_with_key!(u128);
-impl_with_key!(isize);
-impl_with_key!(usize);
-impl_with_key!(f32);
-impl_with_key!(f64);
 
-pub struct KeyRange<'a, T: WithKey, C = Natural<<T as WithKey>::KeyType>> {
-    range: Range<'a, T>,
+#[derive(Debug, PartialEq)]
+pub struct KeyValue<K: Ord, V: BasicOpsWithKey<K>> {
+    pub key: K,
+    pub value: V,
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>> From<&'a mut KeyValue<K, V>>
+    for KeyMutValue<'a, K, V>
+{
+    fn from(kv: &'a mut KeyValue<K, V>) -> Self {
+        Self {
+            key: &kv.key,
+            value: &mut kv.value,
+        }
+    }
+}
+impl<K: Ord, V: BasicOpsWithKey<K>> BasicOps for KeyValue<K, V> {
+    fn push_down(&mut self, lc: Option<&mut Self>, rc: Option<&mut Self>) {
+        self.value.push_down(
+            &self.key,
+            lc.map(|kv| kv.into()),
+            rc.map(|kv| kv.into()),
+        )
+    }
+    fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
+        self.value.push_up(&self.key, lc, rc)
+    }
+}
+impl<K: Ord, V: BasicOpsWithKey<K> + Count> Count for KeyValue<K, V> {
+    type CountType = V::CountType;
+    fn cnt(&self) -> &Self::CountType {
+        self.value.cnt()
+    }
+}
+impl<K: Ord, V: BasicOpsWithKey<K> + CountSub> CountSub for KeyValue<K, V> {
+    fn cnt_sub(&mut self, delta: &Self::CountType) {
+        self.value.cnt_sub(delta)
+    }
+}
+impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount> SubtreeCount
+    for KeyValue<K, V>
+{
+    type SubtreeCountType = V::SubtreeCountType;
+    fn subtree_count(&self) -> &Self::SubtreeCountType {
+        self.value.subtree_count()
+    }
+}
+
+pub struct KeyRange<'a, K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
+    range: Range<'a, KeyValue<K, V>>,
     comparator: &'a C,
 }
-impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
-    fn new(rt: &'a mut Option<Box<Node<T>>>, comparator: &'a C) -> Self {
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
+    fn new(
+        rt: &'a mut Option<Box<Node<KeyValue<K, V>>>>,
+        comparator: &'a C,
+    ) -> Self {
         KeyRange {
             range: Range::new(rt),
             comparator,
         }
     }
-    pub fn root_data(&self) -> Option<&T> {
+    pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
         self.range.root_data()
     }
-    pub fn collect_data(&self) -> Vec<&T> {
+    pub fn collect_data(&self) -> Vec<&KeyValue<K, V>> {
         self.range.collect_data()
     }
-    pub fn take_all_data(self) -> Vec<T> {
+    pub fn take_all_data(self) -> Vec<KeyValue<K, V>> {
         self.range.take_all_data()
     }
 
@@ -640,16 +732,16 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
         &mut self,
         key: &E,
         ge: bool,
-    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
+    ) -> (Vec<(Box<Node<KeyValue<K, V>>>, bool)>, usize)
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let mut next = self.range.rt.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
         while let Some(mut cur) = next {
-            let res = self.comparator.compare(&cur.d.key(), key);
+            let res = self.comparator.compare(&cur.d.key, key);
             if res == Ordering::Equal {
                 path.push((cur, false));
                 ans_depth = path.len();
@@ -668,7 +760,7 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     // Otherwise return false.
     fn splay_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
@@ -676,14 +768,14 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     }
     fn splay_first_le<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.splay_first_le_or_ge(key, false)
     }
     pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.splay_first_le_or_ge(key, true)
@@ -692,9 +784,9 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     fn path_to_first_less_or_greater<E, const GT: bool>(
         &mut self,
         key: &E,
-    ) -> (Vec<(Box<Node<T>>, bool)>, usize)
+    ) -> (Vec<(Box<Node<KeyValue<K, V>>>, bool)>, usize)
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let mut next = self.range.rt.take();
@@ -702,7 +794,7 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
         let mut ans_depth = 0;
         let go_right = if GT { C::compares_le } else { C::compares_lt };
         while let Some(mut cur) = next {
-            let side = go_right(&self.comparator, &cur.d.key(), key);
+            let side = go_right(&self.comparator, &cur.d.key, key);
             next = cur.take_child(side);
             path.push((cur, side));
             if side != GT {
@@ -713,7 +805,7 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     }
     fn splay_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let (path, ans_depth) =
@@ -722,14 +814,14 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     }
     fn splay_first_lt<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.splay_first_lt_or_gt::<E, false>(key)
     }
     pub fn splay_first_gt<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.splay_first_lt_or_gt::<E, true>(key)
@@ -737,7 +829,7 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
 
     fn lt_or_gt<E>(mut self, key: &E, gt: bool) -> Self
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let found = self.splay_first_le_or_ge(key, !gt);
@@ -750,14 +842,14 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     }
     pub fn lt<E>(self, key: &E) -> Self
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.lt_or_gt(key, false)
     }
     fn gt<E>(self, key: &E) -> Self
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.lt_or_gt(key, true)
@@ -765,7 +857,7 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
 
     fn le_or_ge<E, const GE: bool>(mut self, key: &E) -> Self
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let found = if GE {
@@ -782,41 +874,40 @@ impl<'a, T: WithKey, C> KeyRange<'a, T, C> {
     }
     fn le<E>(self, key: &E) -> Self
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.le_or_ge::<E, false>(key)
     }
     fn ge<E>(self, key: &E) -> Self
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.le_or_ge::<E, true>(key)
     }
 }
-impl<'a, T: WithValue, C> KeyRange<'a, T, C> {
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
     // Return updated or not
     pub fn update_root_value<F>(&mut self, f: F) -> bool
     where
-        F: FnOnce(&T::KeyType, &mut T::ValueType),
+        F: FnOnce(&K, &mut V),
     {
         let root = match self.range.rt.as_mut() {
             Some(root) => root,
             None => return false,
         };
-        let kv = root.d.key_immut_value_mut();
-        f(kv.0, kv.1);
+        f(&root.d.key, &mut root.d.value);
         root.push_up();
         return true;
     }
 }
 
-pub struct SplayWithKey<T: WithKey, C = Natural<<T as WithKey>::KeyType>> {
-    splay: Splay<T>,
+pub struct SplayWithKey<K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
+    splay: Splay<KeyValue<K, V>>,
     comparator: C,
 }
-impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
+impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     pub fn with_comparator(comparator: C) -> Self {
         Self {
             splay: Splay::new(),
@@ -829,33 +920,34 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
     {
         Self::with_comparator(C::default())
     }
-    fn from_with_constructor<E, F>(v: Vec<E>, constructor: F) -> Self
+    pub fn construct_with_comparator<E, F>(
+        v: Vec<E>,
+        comparator: C,
+        constructor: F,
+    ) -> Self
     where
-        C: Default,
-        F: Copy + Fn(E) -> T,
+        F: Copy + Fn(E) -> KeyValue<K, V>,
     {
         Self {
             splay: Splay::from_with_constructor(v, constructor),
-            comparator: C::default(),
-        }
-    }
-    pub fn from_with_comparator<E>(v: Vec<E>, comparator: C) -> Self
-    where
-        T: From<E>,
-    {
-        Self {
-            splay: Splay::from(v),
             comparator,
         }
     }
+    pub fn construct<E, F>(v: Vec<E>, constructor: F) -> Self
+    where
+        C: Default,
+        F: Copy + Fn(E) -> KeyValue<K, V>,
+    {
+        Self::construct_with_comparator(v, C::default(), constructor)
+    }
 
-    fn to_range(&mut self) -> KeyRange<T, C> {
+    fn to_range(&mut self) -> KeyRange<K, V, C> {
         KeyRange {
             range: self.splay.to_range(),
             comparator: &self.comparator,
         }
     }
-    pub fn root_data(&self) -> Option<&T> {
+    pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
         self.splay.root_data()
     }
 
@@ -866,9 +958,9 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
     fn find_insert_location<E>(
         &mut self,
         key: &E,
-    ) -> Option<Vec<(Box<Node<T>>, bool)>>
+    ) -> Option<Vec<(Box<Node<KeyValue<K, V>>>, bool)>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let mut path = Vec::new();
@@ -879,7 +971,7 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
             }
         };
         loop {
-            let res = self.comparator.compare(cur.d.key(), key);
+            let res = self.comparator.compare(&cur.d.key, key);
             if res == Ordering::Equal {
                 self.splay.rotate_to_root(cur, path);
                 return None;
@@ -894,62 +986,47 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
             }
         }
     }
-    // Return successful or not.
-    pub fn insert(&mut self, data: T) -> bool {
-        let path = match self.find_insert_location(data.key()) {
-            Some(path) => path,
-            None => return false,
-        };
-        let node = Box::new(Node::new(data));
-        self.splay.__rotate_to_root(node, path);
-        return true;
-    }
     // If the key already exists, then make it the root and return false.
     // Otherwise, construct the data with `func`, insert the node, rotate
     // the new node to root, and return true.
     // Return whether the insertion is successful or not.
-    pub fn insert_with<E, F>(&mut self, key: E, func: F) -> bool
+    fn insert_with<F>(&mut self, key: K, func: F) -> bool
     where
-        C: Compare<T::KeyType, E>,
-        F: FnOnce(E) -> T,
+        F: FnOnce(&K) -> V,
     {
         let path = match self.find_insert_location(&key) {
             Some(path) => path,
             None => return false,
         };
-        let node = Box::new(Node::new(func(key)));
+        let value = func(&key);
+        let node = Box::new(Node::new(KeyValue { key, value }));
         self.splay.__rotate_to_root(node, path);
         return true;
     }
-    // Return succeed or not.
-    fn insert_owned_key<E>(&mut self, key: E) -> bool
-    where
-        C: Compare<T::KeyType, E>,
-        T: From<E>,
-    {
-        self.insert_with(key, |key| T::from(key))
+    // Return successful or not.
+    pub fn insert(&mut self, key: K, value: V) -> bool {
+        self.insert_with(key, |_| value)
     }
-    pub fn insert_owned_key_or_inc_cnt<E>(&mut self, key: E)
+    pub fn insert_or_inc_cnt(&mut self, key: K)
     where
-        C: Compare<T::KeyType, E>,
-        T: From<E> + CountAdd,
-        T::CountType: One,
+        V: CountAdd + Default,
+        V::CountType: One,
     {
-        if self.insert_owned_key(key) == false {
+        if self.insert_with(key, |_| V::default()) == false {
             self.splay
-                .update_root_data(|d| d.cnt_add(&T::CountType::one()));
+                .update_root_data(|d| d.value.cnt_add(&V::CountType::one()));
         }
     }
 
     pub fn splay<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let mut next = self.splay.root.take();
         let mut path = Vec::new();
         while let Some(mut cur) = next {
-            let res = self.comparator.compare(cur.d.key(), key);
+            let res = self.comparator.compare(&cur.d.key, key);
             if res == Ordering::Equal {
                 self.splay.rotate_to_root(cur, path);
                 return true;
@@ -967,9 +1044,9 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
         self.splay.__rotate_to_root(prev, path);
         return false;
     }
-    pub fn remove<E>(&mut self, key: &E) -> Option<T>
+    pub fn remove<E>(&mut self, key: &E) -> Option<KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let ret = self.splay(key);
@@ -989,40 +1066,47 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
         };
         self.splay.__rotate_to_root(x, path);
     }
-    pub fn pop_smallest(&mut self) -> Option<T> {
+    pub fn pop_smallest(&mut self) -> Option<KeyValue<K, V>> {
         self.splay_smallest_or_largest(false);
         self.splay.pop_root()
     }
-    pub fn pop_largest(&mut self) -> Option<T> {
+    pub fn pop_largest(&mut self) -> Option<KeyValue<K, V>> {
         self.splay_smallest_or_largest(true);
         self.splay.pop_root()
     }
-    fn query_smallest_or_largest(&mut self, is_largest: bool) -> Option<&T> {
+    fn query_smallest_or_largest(
+        &mut self,
+        is_largest: bool,
+    ) -> Option<&KeyValue<K, V>> {
         self.splay_smallest_or_largest(is_largest);
         self.root_data()
     }
-    pub fn query_smallest(&mut self) -> Option<&T> {
+    pub fn query_smallest(&mut self) -> Option<&KeyValue<K, V>> {
         self.query_smallest_or_largest(false)
     }
 
     pub fn splay_first_le<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.to_range().splay_first_le(key)
     }
     pub fn splay_first_ge<E>(&mut self, key: &E) -> bool
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.to_range().splay_first_ge(key)
     }
 
-    fn query_first_le_or_ge<E>(&mut self, key: &E, ge: bool) -> Option<&T>
+    fn query_first_le_or_ge<E>(
+        &mut self,
+        key: &E,
+        ge: bool,
+    ) -> Option<&KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let found = self.to_range().splay_first_le_or_ge(key, ge);
@@ -1033,24 +1117,27 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
         assert!(ret.is_some());
         ret
     }
-    pub fn query_first_le<E>(&mut self, key: &E) -> Option<&T>
+    pub fn query_first_le<E>(&mut self, key: &E) -> Option<&KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.query_first_le_or_ge(key, false)
     }
-    pub fn query_first_ge<E>(&mut self, key: &E) -> Option<&T>
+    pub fn query_first_ge<E>(&mut self, key: &E) -> Option<&KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.query_first_le_or_ge(key, true)
     }
 
-    fn query_first_lt_or_gt<E, const GT: bool>(&mut self, key: &E) -> Option<&T>
+    fn query_first_lt_or_gt<E, const GT: bool>(
+        &mut self,
+        key: &E,
+    ) -> Option<&KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let found = self.to_range().splay_first_lt_or_gt::<E, GT>(key);
@@ -1061,16 +1148,16 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
         assert!(ret.is_some());
         ret
     }
-    pub fn query_first_lt<E>(&mut self, key: &E) -> Option<&T>
+    pub fn query_first_lt<E>(&mut self, key: &E) -> Option<&KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.query_first_lt_or_gt::<E, false>(key)
     }
-    pub fn query_first_gt<E>(&mut self, key: &E) -> Option<&T>
+    pub fn query_first_gt<E>(&mut self, key: &E) -> Option<&KeyValue<K, V>>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         self.query_first_lt_or_gt::<E, true>(key)
@@ -1079,7 +1166,7 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
     // The remaining smallest will be the root.
     pub fn del_smaller<E>(&mut self, key: &E)
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
     {
         let (mut path, ans_depth) =
@@ -1094,9 +1181,9 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
         self.splay.root = Some(ans);
     }
 
-    pub fn range<E, R>(&mut self, range: R) -> KeyRange<T, C>
+    pub fn range<E, R>(&mut self, range: R) -> KeyRange<K, V, C>
     where
-        C: Compare<T::KeyType, E>,
+        C: Compare<K, E>,
         E: ?Sized,
         R: RangeBounds<E>,
     {
@@ -1114,47 +1201,47 @@ impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
         ans
     }
 
-    pub fn collect_data(&self) -> Vec<&T> {
+    pub fn collect_data(&self) -> Vec<&KeyValue<K, V>> {
         self.splay.collect_data()
     }
-    pub fn take_all_data(&mut self) -> Vec<T> {
+    pub fn take_all_data(&mut self) -> Vec<KeyValue<K, V>> {
         let mut elems = Vec::new();
         take_subtree_data(self.splay.root.take(), &mut elems);
         elems
     }
 }
-impl<T: WithValue, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
+impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     // Return updated or not
     pub fn update_root_value<F>(&mut self, f: F) -> bool
     where
-        F: FnOnce(&T::KeyType, &mut T::ValueType),
+        F: FnOnce(&K, &mut V),
     {
         self.to_range().update_root_value(f)
     }
 }
-impl<T: WithKey + CountSub, C> SplayWithKey<T, C> {
+impl<K: Ord, V: BasicOpsWithKey<K> + CountSub, C> SplayWithKey<K, V, C> {
     pub fn deref_root(&mut self) -> bool
     where
-        T: CountSub,
-        T::CountType: Zero + One,
+        V: CountSub,
+        V::CountType: Zero + One,
     {
         self.splay.deref_root()
     }
 }
-impl<T: WithKey + SubtreeCount, C> SplayWithKey<T, C> {
-    pub fn size(&self) -> T::SubtreeCountType
+impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount, C> SplayWithKey<K, V, C> {
+    pub fn size(&self) -> V::SubtreeCountType
     where
-        T::SubtreeCountType: Zero + Copy,
+        V::SubtreeCountType: Zero + Copy,
     {
         self.splay.size()
     }
-    pub fn splay_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
+    pub fn splay_kth<'a>(&mut self, k: V::SubtreeCountType) -> bool
     where
-        T::CountType: Copy,
-        T::SubtreeCountType: Ord
+        V::CountType: Copy,
+        V::SubtreeCountType: Ord
             + Copy
             + Zero
-            + Add<T::CountType, Output = T::SubtreeCountType>
+            + Add<V::CountType, Output = V::SubtreeCountType>
             + SubAssign,
     {
         self.splay.splay_kth(k)
@@ -1162,23 +1249,29 @@ impl<T: WithKey + SubtreeCount, C> SplayWithKey<T, C> {
     // Only for DEBUG
     pub fn check_sanity(&self)
     where
-        T::CountType: Copy,
-        T::SubtreeCountType:
-            std::fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
+        V::CountType: Copy,
+        V::SubtreeCountType:
+            std::fmt::Debug + From<V::CountType> + AddAssign + Eq + Copy,
     {
         self.splay.check_sanity()
     }
 }
-impl<T: WithKey + std::fmt::Display, C> SplayWithKey<T, C> {
-    pub fn print_tree(&self) {
-        self.splay.print_tree()
+impl<K: Ord, V: BasicOpsWithKey<K>, C> SplayWithKey<K, V, C> {
+    pub fn print_tree_with<F>(&self, data_to_string: F)
+    where
+        F: Fn(&KeyValue<K, V>) -> String + Clone,
+    {
+        self.splay.print_tree_with(data_to_string)
     }
 }
-impl<E, T: WithKey + From<E>, C: Compare<T::KeyType, T::KeyType> + Default>
-    From<Vec<E>> for SplayWithKey<T, C>
+impl<K: Ord, V: BasicOpsWithKey<K> + Default, C: Compare<K, K> + Default>
+    From<Vec<K>> for SplayWithKey<K, V, C>
 {
-    fn from(v: Vec<E>) -> Self {
-        SplayWithKey::from_with_constructor(v, T::from)
+    fn from(v: Vec<K>) -> Self {
+        Self::construct(v, |key| KeyValue {
+            key,
+            value: V::default(),
+        })
     }
 }
 
@@ -1187,117 +1280,87 @@ struct RankTreeValue {
     cnt: u32,
     scnt: u32,
 }
-struct RankTreeData<T: Ord> {
-    key: T,
-    value: RankTreeValue,
-}
-impl<T: Ord> RankTreeData<T> {
-    fn new(key: T, cnt: u32, scnt: u32) -> Self {
-        RankTreeData {
-            key,
-            value: RankTreeValue { cnt, scnt },
-        }
-    }
-}
 
-impl<T: Ord> BasicOps for RankTreeData<T> {
+impl BasicOps for RankTreeValue {
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
-        self.value.scnt = self.value.cnt;
+        self.scnt = self.cnt;
         if let Some(d) = lc {
-            self.value.scnt += d.value.scnt;
+            self.scnt += d.scnt;
         }
         if let Some(d) = rc {
-            self.value.scnt += d.value.scnt;
+            self.scnt += d.scnt;
         }
     }
 }
 
-impl<T: Ord> WithKey for RankTreeData<T> {
-    type KeyType = T;
-    fn key(&self) -> &T {
-        &self.key
-    }
-}
-impl<T: Ord> WithValue for RankTreeData<T> {
-    type ValueType = RankTreeValue;
-    fn value(&self) -> &Self::ValueType {
-        &self.value
-    }
-    fn key_immut_value_mut(
-        &mut self,
-    ) -> (&Self::KeyType, &mut Self::ValueType) {
-        (&self.key, &mut self.value)
+impl Default for RankTreeValue {
+    fn default() -> Self {
+        RankTreeValue { cnt: 1, scnt: 1 }
     }
 }
 
-impl<T: Ord> From<T> for RankTreeData<T> {
-    fn from(key: T) -> Self {
-        RankTreeData::new(key, 1, 1)
-    }
-}
-
-impl<T: Ord> Count for RankTreeData<T> {
+impl Count for RankTreeValue {
     type CountType = u32;
     fn cnt(&self) -> &Self::CountType {
-        &self.value.cnt
+        &self.cnt
     }
 }
 
-impl<T: Ord> CountAdd for RankTreeData<T> {
+impl CountAdd for RankTreeValue {
     fn cnt_add(&mut self, delta: &Self::CountType) {
-        self.value.cnt += delta;
+        self.cnt += delta;
     }
 }
 
-impl<T: Ord> SubtreeCount for RankTreeData<T> {
+impl SubtreeCount for RankTreeValue {
     type SubtreeCountType = u32;
     fn subtree_count(&self) -> &Self::SubtreeCountType {
-        &self.value.scnt
+        &self.scnt
     }
 }
 
-impl<T: Ord + std::fmt::Display> std::fmt::Display for RankTreeData<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}*{}", self.key, self.value.cnt)
-    }
+fn ranktree_data_to_string<K: Ord + Display>(
+    data: &KeyValue<K, RankTreeValue>,
+) -> String {
+    format!("{}*{}", data.key, data.value.cnt)
 }
 
-pub struct RankTree<T: Ord> {
-    rep: SplayWithKey<RankTreeData<T>>,
+pub struct RankTree<K: Ord> {
+    rep: SplayWithKey<K, RankTreeValue>,
 }
 
-impl<T: Ord> RankTree<T> {
-    pub fn new() -> RankTree<T> {
+impl<K: Ord> RankTree<K> {
+    pub fn new() -> RankTree<K> {
         RankTree {
             rep: SplayWithKey::new(),
         }
     }
 }
 
-impl<T: Ord + WithKey> RankTree<T> {
+impl<K: Ord> RankTree<K> {
     pub fn size(&self) -> u32 {
         self.rep.size()
     }
-    pub fn root_key(&self) -> Option<&T> {
+    pub fn root_key(&self) -> Option<&K> {
         self.rep.root_data().map(|d| &d.key)
     }
-    pub fn insert(&mut self, key: T) {
-        self.rep.insert_owned_key_or_inc_cnt(key);
+    pub fn insert(&mut self, key: K) {
+        self.rep.insert_or_inc_cnt(key);
     }
-    pub fn splay(&mut self, key: &T) -> bool {
+    pub fn splay(&mut self, key: &K) -> bool {
         self.rep.splay(key)
     }
-    pub fn splay_first_le(&mut self, key: &T) -> bool {
+    pub fn splay_first_le(&mut self, key: &K) -> bool {
         self.rep.splay_first_le(key)
     }
-    pub fn splay_first_ge(&mut self, key: &T) -> bool {
+    pub fn splay_first_ge(&mut self, key: &K) -> bool {
         self.rep.splay_first_ge(key)
     }
     // The remaining smallest will be the root.
-    pub fn del_smaller(&mut self, key: &T) {
+    pub fn del_smaller(&mut self, key: &K) {
         self.rep.del_smaller(key)
     }
-    pub fn query_kth(&mut self, k: u32) -> Option<&T> {
+    pub fn query_kth(&mut self, k: u32) -> Option<&K> {
         if self.rep.splay_kth(k) {
             self.root_key()
         } else {
@@ -1309,8 +1372,8 @@ impl<T: Ord + WithKey> RankTree<T> {
     }
 }
 
-impl<T: Ord + std::fmt::Display> RankTree<T> {
+impl<K: Ord + std::fmt::Display> RankTree<K> {
     pub fn print_tree(&self) {
-        self.rep.print_tree()
+        self.rep.print_tree_with(ranktree_data_to_string);
     }
 }
