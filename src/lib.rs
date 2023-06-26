@@ -990,7 +990,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     // Otherwise, construct the data with `func`, insert the node, rotate
     // the new node to root, and return true.
     // Return whether the insertion is successful or not.
-    fn insert_with<F>(&mut self, key: K, func: F) -> bool
+    pub fn insert_with<F>(&mut self, key: K, func: F) -> bool
     where
         F: FnOnce(&K) -> V,
     {
