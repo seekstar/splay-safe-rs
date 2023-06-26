@@ -909,6 +909,12 @@ pub struct SplayWithKey<K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
     comparator: C,
 }
 impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
+    pub fn with_splay_comparator(
+        splay: Splay<KeyValue<K, V>>,
+        comparator: C,
+    ) -> Self {
+        Self { splay, comparator }
+    }
     pub fn with_comparator(comparator: C) -> Self {
         Self {
             splay: Splay::new(),
