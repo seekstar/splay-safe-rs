@@ -816,7 +816,7 @@ pub struct SplayWithKey<T: WithKey, C = Natural<<T as WithKey>::KeyType>> {
     splay: Splay<T>,
     comparator: C,
 }
-impl<T: WithKey, C> SplayWithKey<T, C> {
+impl<T: WithKey, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
     pub fn with_comparator(comparator: C) -> Self {
         Self {
             splay: Splay::new(),
@@ -879,7 +879,7 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
             }
         };
         loop {
-            let res = self.comparator.compare(&cur.d.key(), key);
+            let res = self.comparator.compare(cur.d.key(), key);
             if res == Ordering::Equal {
                 self.splay.rotate_to_root(cur, path);
                 return None;
@@ -895,12 +895,8 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         }
     }
     // Return successful or not.
-    pub fn insert<E>(&mut self, key: &E, data: T) -> bool
-    where
-        C: Compare<T::KeyType, E>,
-        E: ?Sized,
-    {
-        let path = match self.find_insert_location(key) {
+    pub fn insert(&mut self, data: T) -> bool {
+        let path = match self.find_insert_location(data.key()) {
             Some(path) => path,
             None => return false,
         };
@@ -912,7 +908,7 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
     // Otherwise, construct the data with `func`, insert the node, rotate
     // the new node to root, and return true.
     // Return whether the insertion is successful or not.
-    pub fn insert_owned_key_with_func<E, F>(&mut self, key: E, func: F) -> bool
+    pub fn insert_with<E, F>(&mut self, key: E, func: F) -> bool
     where
         C: Compare<T::KeyType, E>,
         F: FnOnce(E) -> T,
@@ -926,12 +922,12 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         return true;
     }
     // Return succeed or not.
-    pub fn insert_owned_key<E>(&mut self, key: E) -> bool
+    fn insert_owned_key<E>(&mut self, key: E) -> bool
     where
         C: Compare<T::KeyType, E>,
         T: From<E>,
     {
-        self.insert_owned_key_with_func(key, |key| T::from(key))
+        self.insert_with(key, |key| T::from(key))
     }
     pub fn insert_owned_key_or_inc_cnt<E>(&mut self, key: E)
     where
@@ -953,7 +949,7 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         let mut next = self.splay.root.take();
         let mut path = Vec::new();
         while let Some(mut cur) = next {
-            let res = self.comparator.compare(&cur.d.key(), key);
+            let res = self.comparator.compare(cur.d.key(), key);
             if res == Ordering::Equal {
                 self.splay.rotate_to_root(cur, path);
                 return true;
@@ -1127,7 +1123,7 @@ impl<T: WithKey, C> SplayWithKey<T, C> {
         elems
     }
 }
-impl<T: WithValue, C> SplayWithKey<T, C> {
+impl<T: WithValue, C: Compare<T::KeyType, T::KeyType>> SplayWithKey<T, C> {
     // Return updated or not
     pub fn update_root_value<F>(&mut self, f: F) -> bool
     where
@@ -1178,7 +1174,9 @@ impl<T: WithKey + std::fmt::Display, C> SplayWithKey<T, C> {
         self.splay.print_tree()
     }
 }
-impl<E, T: WithKey + From<E>, C: Default> From<Vec<E>> for SplayWithKey<T, C> {
+impl<E, T: WithKey + From<E>, C: Compare<T::KeyType, T::KeyType> + Default>
+    From<Vec<E>> for SplayWithKey<T, C>
+{
     fn from(v: Vec<E>) -> Self {
         SplayWithKey::from_with_constructor(v, T::from)
     }

@@ -61,7 +61,7 @@ mod rand_tests {
         T: WithKey + Clone,
     {
         let mut std_exists = false;
-        let succeed = env.splay.insert(&key, value.clone());
+        let succeed = env.splay.insert(value.clone());
         env.btree
             .entry(key.clone())
             .and_modify(|_| std_exists = true)
@@ -341,7 +341,7 @@ mod online_judge {
         let d =
             |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>, x| {
                 destroyed.push(x);
-                splay.insert_owned_key(x);
+                splay.insert(x);
             };
         let r = |splay: &mut SplayWithKey<_, _>, destroyed: &mut Vec<u32>| {
             let x = destroyed.pop().unwrap();
@@ -439,16 +439,12 @@ mod online_judge {
             }
         }
         let mut splay = SplayWithKey::<SplayData>::new();
-        assert!(splay
-            .insert_owned_key_with_func(1, |key| SplayData { key, value: 1 }));
-        assert!(splay
-            .insert_owned_key_with_func(5, |key| SplayData { key, value: 2 }));
+        assert!(splay.insert_with(1, |key| SplayData { key, value: 1 }));
+        assert!(splay.insert_with(5, |key| SplayData { key, value: 2 }));
         assert_eq!(splay.pop_largest(), Some(SplayData { key: 5, value: 2 }));
-        assert!(splay
-            .insert_owned_key_with_func(3, |key| SplayData { key, value: 3 }));
+        assert!(splay.insert_with(3, |key| SplayData { key, value: 3 }));
         assert_eq!(splay.pop_smallest(), Some(SplayData { key: 1, value: 1 }));
-        assert!(splay
-            .insert_owned_key_with_func(2, |key| SplayData { key, value: 5 }));
+        assert!(splay.insert_with(2, |key| SplayData { key, value: 5 }));
         assert_eq!(
             splay.collect_data(),
             vec![
