@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 num-traits = "0.2"
 compare = "0.1"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 rand = "0.8"

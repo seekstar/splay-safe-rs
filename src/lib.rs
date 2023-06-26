@@ -9,6 +9,7 @@ mod tests;
 pub use compare::Compare;
 use compare::Natural;
 use num_traits::{One, Zero};
+use serde::{Deserialize, Serialize};
 
 use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, SubAssign};
@@ -653,7 +654,7 @@ impl<K: Ord, V: BasicOps> BasicOpsWithKey<K> for V {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyValue<K: Ord, V: BasicOpsWithKey<K>> {
     pub key: K,
     pub value: V,
