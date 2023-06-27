@@ -8,8 +8,8 @@
 mod rand_tests {
     use rand::distributions::{Distribution, Uniform};
     use rand::rngs::StdRng;
-    use rand::Rng;
-    use rand::SeedableRng;
+    use rand::{Rng, SeedableRng};
+    use rand_op::{rand_op, OpCnt};
     use std::cmp::Ordering;
     use std::collections::BTreeMap;
     use std::ops::Bound::{self, Excluded, Unbounded};
@@ -27,27 +27,10 @@ mod rand_tests {
     }
 
     struct GeneralEnv<K: Ord, V: BasicOpsWithKey<K>> {
-        rng: StdRng,
         splay: SplayWithKey<K, V>,
         btree: BTreeMap<K, V>,
         key_len: usize,
         val_len: usize,
-    }
-    struct OpNum {
-        insert: usize,
-        query_first_lt: usize,
-        query_first_gt: usize,
-        range: usize,
-    }
-    impl Default for OpNum {
-        fn default() -> OpNum {
-            OpNum {
-                insert: 0,
-                query_first_lt: 0,
-                query_first_gt: 0,
-                range: 0,
-            }
-        }
     }
     fn general_insert<'a, 'b, 'c, K, V>(
         env: &mut GeneralEnv<K, V>,
@@ -124,22 +107,25 @@ mod rand_tests {
     }
     impl BasicOps for SplayValue {}
     type Env = GeneralEnv<Vec<u8>, SplayValue>;
-    fn insert(env: &mut Env) {
-        let key = rand_digits(&mut env.rng, env.key_len);
+    fn insert(rng: &mut StdRng, env: &mut Env) -> bool {
+        let key = rand_digits(rng, env.key_len);
         let value = SplayValue {
-            value: rand_digits(&mut env.rng, env.val_len),
+            value: rand_digits(rng, env.val_len),
         };
         general_insert(env, key, value);
+        true
     }
-    fn query_first_lt(env: &mut Env) {
-        let key = rand_digits(&mut env.rng, env.key_len);
+    fn query_first_lt(rng: &mut StdRng, env: &mut Env) -> bool {
+        let key = rand_digits(rng, env.key_len);
         general_query_first_lt(env, &key);
+        true
     }
-    fn query_first_gt(env: &mut Env) {
-        let key = rand_digits(&mut env.rng, env.key_len);
+    fn query_first_gt(rng: &mut StdRng, env: &mut Env) -> bool {
+        let key = rand_digits(rng, env.key_len);
         general_query_first_gt(env, &key);
+        true
     }
-    fn query_range(env: &mut Env) {
+    fn query_range(rng: &mut StdRng, env: &mut Env) -> bool {
         // 0: Included, 1: Excluded, 2: Unbounded
         let get_bound = |t: i32, k: Vec<u8>| match t {
             0 => Bound::Included(k),
@@ -147,12 +133,12 @@ mod rand_tests {
             _ => unreachable!(),
         };
         let bound_dist = Uniform::from(0..3);
-        let t1 = bound_dist.sample(&mut env.rng);
-        let t2 = bound_dist.sample(&mut env.rng);
+        let t1 = bound_dist.sample(rng);
+        let t2 = bound_dist.sample(rng);
         let range = if t1 != 2 {
-            let k1 = rand_digits(&mut env.rng, env.key_len);
+            let k1 = rand_digits(rng, env.key_len);
             if t2 != 2 {
-                let k2 = rand_digits(&mut env.rng, env.key_len);
+                let k2 = rand_digits(rng, env.key_len);
                 let res = k1.cmp(&k2);
                 match res {
                     Ordering::Less => (get_bound(t1, k1), get_bound(t2, k2)),
@@ -173,77 +159,31 @@ mod rand_tests {
             (
                 Bound::Unbounded,
                 match t2 {
-                    0 => {
-                        Bound::Included(rand_digits(&mut env.rng, env.key_len))
-                    }
-                    1 => {
-                        Bound::Excluded(rand_digits(&mut env.rng, env.key_len))
-                    }
+                    0 => Bound::Included(rand_digits(rng, env.key_len)),
+                    1 => Bound::Excluded(rand_digits(rng, env.key_len)),
                     2 => Bound::Unbounded,
                     _ => unreachable!(),
                 },
             )
         };
         general_query_range(env, range);
-    }
-    fn rand_op(mut num: OpNum, key_len: usize, val_len: usize) {
-        let mut env = Env {
-            rng: StdRng::seed_from_u64(233),
-            splay: SplayWithKey::new(),
-            btree: BTreeMap::new(),
-            key_len,
-            val_len,
-        };
-        let mut tot =
-            num.insert + num.query_first_lt + num.query_first_gt + num.range;
-        while tot > 0 {
-            let op_dist = Uniform::from(0..tot);
-            let mut rand_num = op_dist.sample(&mut env.rng);
-            if rand_num < num.insert {
-                num.insert -= 1;
-                tot -= 1;
-                insert(&mut env);
-                continue;
-            }
-            rand_num -= num.insert;
-            if rand_num < num.query_first_lt {
-                num.query_first_lt -= 1;
-                tot -= 1;
-                query_first_lt(&mut env);
-                continue;
-            }
-            rand_num -= num.query_first_lt;
-            if rand_num < num.query_first_gt {
-                num.query_first_gt -= 1;
-                tot -= 1;
-                query_first_gt(&mut env);
-                continue;
-            }
-            rand_num -= num.query_first_gt;
-            if rand_num < num.range {
-                num.range -= 1;
-                tot -= 1;
-                query_range(&mut env);
-                continue;
-            }
-            // rand_num -= num.range;
-            unreachable!();
-        }
-        assert_eq!(num.insert, 0);
-        assert_eq!(num.query_first_lt, 0);
-        assert_eq!(num.query_first_gt, 0);
+        true
     }
     fn rand_insert_query_first_lt_or_gt(magnitude: usize) {
-        let n = 10usize.pow(magnitude as u32);
+        let n = 10u64.pow(magnitude as u32);
         rand_op(
-            OpNum {
-                insert: n,
-                query_first_lt: n,
-                query_first_gt: n,
-                ..Default::default()
+            &mut StdRng::seed_from_u64(233),
+            &mut Env {
+                splay: SplayWithKey::new(),
+                btree: BTreeMap::new(),
+                key_len: magnitude,
+                val_len: magnitude,
             },
-            magnitude,
-            magnitude,
+            vec![
+                OpCnt::new(insert, n),
+                OpCnt::new(query_first_lt, n),
+                OpCnt::new(query_first_gt, n),
+            ],
         );
     }
     #[test]
@@ -268,15 +208,19 @@ mod rand_tests {
     }
 
     fn rand_insert_query_long_range(magnitude: usize) {
-        let n = 10usize.pow(magnitude as u32);
+        let n = 10u64.pow(magnitude as u32);
         rand_op(
-            OpNum {
-                insert: n,
-                range: (n as f64).sqrt() as usize,
-                ..Default::default()
+            &mut StdRng::seed_from_u64(233),
+            &mut Env {
+                splay: SplayWithKey::new(),
+                btree: BTreeMap::new(),
+                key_len: magnitude,
+                val_len: magnitude,
             },
-            magnitude,
-            magnitude,
+            vec![
+                OpCnt::new(insert, n),
+                OpCnt::new(query_range, (n as f64).sqrt() as u64),
+            ],
         );
     }
     #[test]
