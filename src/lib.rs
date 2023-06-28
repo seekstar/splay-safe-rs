@@ -405,7 +405,7 @@ pub trait CountAdd: Count {
 pub trait CountSub: Count {
     fn cnt_sub(&mut self, delta: &Self::CountType);
 }
-pub trait SubtreeCount: Count {
+pub trait SubtreeCount: BasicOps {
     type SubtreeCountType;
     fn subtree_count(&self) -> &Self::SubtreeCountType;
 }
@@ -432,12 +432,7 @@ impl<T: CountSub> Splay<T> {
 impl<'a, T: SubtreeCount> Range<'a, T> {
     fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
     where
-        T::CountType: Copy,
-        T::SubtreeCountType: Ord
-            + Copy
-            + Zero
-            + Add<T::CountType, Output = T::SubtreeCountType>
-            + SubAssign,
+        T::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
     {
         let mut next = self.rt.take();
         let mut path = Vec::new();
@@ -448,14 +443,21 @@ impl<'a, T: SubtreeCount> Range<'a, T> {
             } else {
                 T::SubtreeCountType::zero()
             };
-            let cur_cnt = *cur.d.cnt();
-            if &lscnt < &k && &(lscnt + cur_cnt) >= &k {
+            let rscnt = if let Some(ref rc) = cur.c[1] {
+                *rc.d.subtree_count()
+            } else {
+                T::SubtreeCountType::zero()
+            };
+            // TODO: Introduce "Sub" trait requirement in the next version with breaking changes.
+            let mut ls_or_cur_cnt = *cur.d.subtree_count();
+            ls_or_cur_cnt -= rscnt;
+            if &lscnt < &k && ls_or_cur_cnt >= k {
                 self.__rotate_to_root(cur, path);
                 return true;
             }
             let side = lscnt < k;
             if side {
-                k -= lscnt + cur_cnt;
+                k -= ls_or_cur_cnt;
             };
             next = cur.c[side as usize].take();
             path.push((cur, side));
@@ -486,16 +488,13 @@ impl<T: SubtreeCount> Splay<T> {
     // false.
     pub fn splay_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
     where
-        T::CountType: Copy,
-        T::SubtreeCountType: Ord
-            + Copy
-            + Zero
-            + Add<T::CountType, Output = T::SubtreeCountType>
-            + SubAssign,
+        T::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
     {
         self.to_range().splay_kth(k)
     }
+}
 
+impl<T: Count + SubtreeCount> Splay<T> {
     fn check_sanity_subtree<'a>(&self, rt: &Box<Node<T>>)
     where
         T::CountType: Copy,
@@ -1244,15 +1243,14 @@ impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount, C> SplayWithKey<K, V, C> {
     }
     pub fn splay_kth<'a>(&mut self, k: V::SubtreeCountType) -> bool
     where
-        V::CountType: Copy,
-        V::SubtreeCountType: Ord
-            + Copy
-            + Zero
-            + Add<V::CountType, Output = V::SubtreeCountType>
-            + SubAssign,
+        V::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
     {
         self.splay.splay_kth(k)
     }
+}
+impl<K: Ord, V: BasicOpsWithKey<K> + Count + SubtreeCount, C>
+    SplayWithKey<K, V, C>
+{
     // Only for DEBUG
     pub fn check_sanity(&self)
     where
