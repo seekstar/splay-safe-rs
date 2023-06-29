@@ -5,19 +5,11 @@
  */
 
 #[cfg(test)]
-mod rand_tests {
-    use rand::distributions::{Distribution, Uniform};
-    use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
-    use rand_op::{rand_op, OpCnt};
-    use std::cmp::Ordering;
-    use std::collections::BTreeMap;
-    use std::ops::Bound::{self, Excluded, Unbounded};
-    use std::ops::RangeBounds;
-
-    use crate::{BasicOps, BasicOpsWithKey, SplayWithKey};
-
-    fn rand_digits<R: Rng>(rng: &mut R, num: usize) -> Vec<u8> {
+mod common {
+    use rand::distributions::Uniform;
+    use rand::prelude::Distribution;
+    use rand::Rng;
+    pub fn rand_digits<R: Rng>(rng: &mut R, num: usize) -> Vec<u8> {
         let dist = Uniform::new(b'0', b'9' + 1);
         let mut ret = Vec::with_capacity(num);
         for _ in 0..num {
@@ -25,6 +17,21 @@ mod rand_tests {
         }
         ret
     }
+}
+
+#[cfg(test)]
+mod rand_with_key {
+    use rand::distributions::{Distribution, Uniform};
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use rand_op::{rand_op, OpCnt};
+    use std::cmp::Ordering;
+    use std::collections::BTreeMap;
+    use std::ops::Bound::{self, Excluded, Unbounded};
+    use std::ops::RangeBounds;
+
+    use super::common::rand_digits;
+    use crate::{BasicOps, BasicOpsWithKey, SplayWithKey};
 
     struct GeneralEnv<K: Ord, V: BasicOpsWithKey<K>> {
         splay: SplayWithKey<K, V>,
@@ -32,11 +39,8 @@ mod rand_tests {
         key_len: usize,
         val_len: usize,
     }
-    fn general_insert<'a, 'b, 'c, K, V>(
-        env: &mut GeneralEnv<K, V>,
-        key: K,
-        value: V,
-    ) where
+    fn general_insert<K, V>(env: &mut GeneralEnv<K, V>, key: K, value: V)
+    where
         K: Ord + Clone,
         V: Clone + BasicOpsWithKey<K>,
     {
@@ -242,6 +246,124 @@ mod rand_tests {
     #[test]
     fn rand_insert_query_range_1e5() {
         rand_insert_query_long_range(5);
+    }
+}
+
+#[cfg(test)]
+mod rand_with_count {
+    use std::{
+        fmt::Debug,
+        ops::{Add, SubAssign},
+    };
+
+    use num_traits::{One, Zero};
+    use rand::{prelude::Distribution, rngs::StdRng, Rng, SeedableRng};
+    use rand_op::{rand_op, OpCnt};
+
+    use crate::{BasicOps, Splay, SubtreeCount};
+
+    struct GeneralEnv<T: SubtreeCount> {
+        splay: Splay<T>,
+        vec: Vec<T>,
+    }
+    fn general_insert<T>(
+        env: &mut GeneralEnv<T>,
+        index: T::SubtreeCountType,
+        data: T,
+    ) where
+        T: SubtreeCount + Clone,
+        T::SubtreeCountType: Clone
+            + Ord
+            + for<'a> SubAssign<&'a T::SubtreeCountType>
+            + Zero
+            + One
+            + Into<usize>,
+    {
+        env.splay.insert_at_index(index.clone(), data.clone());
+        env.vec.insert(index.into(), data);
+    }
+    fn general_find_by_index<T>(
+        env: &mut GeneralEnv<T>,
+        index: T::SubtreeCountType,
+    ) where
+        T: SubtreeCount + PartialEq + Debug,
+        T::SubtreeCountType:
+            Copy + Ord + Add + SubAssign + Zero + One + Into<usize>,
+    {
+        let std_ret = env.vec.get_mut(index.into());
+        let k = index + T::SubtreeCountType::one();
+        let found = env.splay.splay_kth(k);
+        if let Some(data) = std_ret {
+            assert!(found);
+            assert_eq!(data, env.splay.root_data().unwrap());
+        } else {
+            assert!(!found);
+        }
+    }
+    #[derive(Clone, Debug)]
+    struct SplayData {
+        value: u64,
+        scnt: usize,
+    }
+    impl PartialEq for SplayData {
+        fn eq(&self, other: &Self) -> bool {
+            self.value == other.value
+        }
+    }
+    impl BasicOps for SplayData {
+        fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
+            self.scnt = 1 + lc.map_or(0, |d| d.scnt) + rc.map_or(0, |d| d.scnt);
+        }
+    }
+    impl SubtreeCount for SplayData {
+        type SubtreeCountType = usize;
+        fn subtree_count(&self) -> &Self::SubtreeCountType {
+            &self.scnt
+        }
+    }
+    type Env = GeneralEnv<SplayData>;
+    fn insert(rng: &mut StdRng, env: &mut Env) -> bool {
+        let index =
+            rand::distributions::Uniform::new(0, env.vec.len() + 1).sample(rng);
+        let data = SplayData {
+            value: rng.gen(),
+            scnt: 1,
+        };
+        general_insert(env, index, data);
+        true
+    }
+    fn find(rng: &mut StdRng, env: &mut Env) -> bool {
+        let index =
+            rand::distributions::Uniform::new(0, env.vec.len()).sample(rng);
+        general_find_by_index(env, index);
+        true
+    }
+    fn rand_insert_find(magnitude: usize) {
+        let n = 10u64.pow(magnitude as u32);
+        rand_op(
+            &mut StdRng::seed_from_u64(233),
+            &mut Env {
+                splay: Splay::new(),
+                vec: Vec::new(),
+            },
+            vec![OpCnt::new(insert, n), OpCnt::new(find, n)],
+        );
+    }
+    #[test]
+    fn rand_insert_find_1e1() {
+        rand_insert_find(1);
+    }
+    #[test]
+    fn rand_insert_find_1e2() {
+        rand_insert_find(2);
+    }
+    #[test]
+    fn rand_insert_find_1e3() {
+        rand_insert_find(3);
+    }
+    #[test]
+    fn rand_insert_find_1e4() {
+        rand_insert_find(4);
     }
 }
 

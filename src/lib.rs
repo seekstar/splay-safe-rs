@@ -163,6 +163,11 @@ impl<'a, T> Range<'a, T> {
     }
 }
 
+enum Direction {
+    Left,
+    Stop,
+    Right,
+}
 impl<'a, T: BasicOps> Range<'a, T> {
     // Not tested by OJ
     pub fn delete(&mut self) {
@@ -240,6 +245,34 @@ impl<'a, T: BasicOps> Range<'a, T> {
         self.__rotate_to_root(ans, path);
         return true;
     }
+
+    fn walk<F: FnMut(&Node<T>) -> Direction>(
+        &mut self,
+        mut where_to_go: F,
+    ) -> Option<Vec<(Box<Node<T>>, bool)>> {
+        let mut path = Vec::new();
+        let mut cur = match self.rt.take() {
+            Some(rt) => rt,
+            None => return Some(path),
+        };
+        loop {
+            let side = match where_to_go(&cur) {
+                Direction::Stop => {
+                    self.rotate_to_root(cur, path);
+                    return None;
+                }
+                Direction::Left => false,
+                Direction::Right => true,
+            };
+            let next = cur.take_child(side);
+            path.push((cur, side));
+            if let Some(nex) = next {
+                cur = nex
+            } else {
+                return Some(path);
+            }
+        }
+    }
 }
 
 pub struct Splay<T> {
@@ -250,6 +283,9 @@ impl<T> Splay<T> {
     // use Basic::C as CT;
     pub fn new() -> Splay<T> {
         Splay { root: None }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
     }
 }
 
@@ -430,6 +466,45 @@ impl<T: CountSub> Splay<T> {
 }
 
 impl<'a, T: SubtreeCount> Range<'a, T> {
+    /// If T implements Count, then Count::cnt() should always return 1.
+    /// We can't enforce this with the compiler because currently we can't
+    /// define a trait CountIsOne : Count and override the "cnt" method of
+    /// trait Count
+    fn find_insert_location_by_index(
+        &mut self,
+        // Starts from zero
+        mut index: T::SubtreeCountType,
+    ) -> Option<Vec<(Box<Node<T>>, bool)>>
+    where
+        T::SubtreeCountType:
+            Ord + for<'b> SubAssign<&'b T::SubtreeCountType> + Zero + One,
+    {
+        let zero = T::SubtreeCountType::zero();
+        self.walk(|node| {
+            assert!(&index <= node.d.subtree_count());
+            let lscnt =
+                node.c[0].as_ref().map_or(&zero, |lc| lc.d.subtree_count());
+            if &index <= lscnt {
+                Direction::Left
+            } else {
+                index -= lscnt;
+                index -= &T::SubtreeCountType::one();
+                Direction::Right
+            }
+        })
+    }
+    fn insert_at_index(&mut self, index: T::SubtreeCountType, data: T)
+    where
+        T::SubtreeCountType:
+            Ord + for<'b> SubAssign<&'b T::SubtreeCountType> + Zero + One,
+    {
+        let path = match self.find_insert_location_by_index(index) {
+            Some(path) => path,
+            None => unreachable!(),
+        };
+        let node = Box::new(Node::new(data));
+        self.__rotate_to_root(node, path);
+    }
     fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
     where
         T::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
@@ -438,16 +513,14 @@ impl<'a, T: SubtreeCount> Range<'a, T> {
         let mut path = Vec::new();
         while let Some(mut cur) = next {
             cur.push_down();
-            let lscnt = if let Some(ref lc) = cur.c[0] {
-                *lc.d.subtree_count()
-            } else {
-                T::SubtreeCountType::zero()
-            };
-            let rscnt = if let Some(ref rc) = cur.c[1] {
-                *rc.d.subtree_count()
-            } else {
-                T::SubtreeCountType::zero()
-            };
+            let lscnt =
+                cur.c[0].as_ref().map_or(T::SubtreeCountType::zero(), |lc| {
+                    *lc.d.subtree_count()
+                });
+            let rscnt =
+                cur.c[1].as_ref().map_or(T::SubtreeCountType::zero(), |rc| {
+                    *rc.d.subtree_count()
+                });
             // TODO: Introduce "Sub" trait requirement in the next version with breaking changes.
             let mut ls_or_cur_cnt = *cur.d.subtree_count();
             ls_or_cur_cnt -= rscnt;
@@ -482,10 +555,18 @@ impl<T: SubtreeCount> Splay<T> {
             None => T::SubtreeCountType::zero(),
         }
     }
+    pub fn insert_at_index(&mut self, index: T::SubtreeCountType, data: T)
+    where
+        T::SubtreeCountType:
+            Ord + for<'a> SubAssign<&'a T::SubtreeCountType> + Zero + One,
+    {
+        self.to_range().insert_at_index(index, data)
+    }
 
-    // If found, then the node will be the root, and return true.
-    // If not found, then the last accessed node will be the root, and return
-    // false.
+    /// If found, then the node will be the root, and return true.
+    ///
+    /// If not found, then the last accessed node will be the root, and return
+    /// false.
     pub fn splay_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
     where
         T::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
@@ -969,28 +1050,13 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         C: Compare<K, E>,
         E: ?Sized,
     {
-        let mut path = Vec::new();
-        let mut cur = match self.splay.root.take() {
-            Some(root) => root,
-            None => {
-                return Some(path);
+        self.splay.to_range().walk(|node| {
+            match self.comparator.compare(&node.d.key, key) {
+                Ordering::Equal => Direction::Stop,
+                Ordering::Less => Direction::Right,
+                Ordering::Greater => Direction::Left,
             }
-        };
-        loop {
-            let res = self.comparator.compare(&cur.d.key, key);
-            if res == Ordering::Equal {
-                self.splay.rotate_to_root(cur, path);
-                return None;
-            }
-            let side = res == Ordering::Less;
-            let next = cur.take_child(side);
-            path.push((cur, side));
-            if let Some(nex) = next {
-                cur = nex
-            } else {
-                return Some(path);
-            }
-        }
+        })
     }
     // If the key already exists, then make it the root and return false.
     // Otherwise, construct the data with `func`, insert the node, rotate
