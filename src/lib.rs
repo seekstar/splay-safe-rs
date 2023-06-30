@@ -427,6 +427,9 @@ impl<T: BasicOps> Splay<T> {
         collect_subtree_data(&self.root, &mut elems);
         elems
     }
+    pub fn take_all_data(mut self) -> Vec<T> {
+        self.to_range().take_all_data()
+    }
 }
 
 pub trait Count: BasicOps {
