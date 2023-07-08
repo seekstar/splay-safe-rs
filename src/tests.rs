@@ -558,18 +558,18 @@ mod online_judge {
             y: i32,
             k: i32,
         ) {
-            let mut range = splay.range((Included(x), Included(y)));
-            range.update_root_value(|_, v| {
+            if let Some(mut v) =
+                splay.range((Included(x), Included(y))).root_value_mut()
+            {
                 v.value += k;
                 v.lazy += k;
-            });
+            }
         }
         fn point_query(
             splay: &mut SplayWithKey<i32, SplayValue>,
             x: i32,
         ) -> i32 {
-            assert!(splay.splay(&x));
-            splay.root_data().unwrap().value.value
+            splay.get_mut(&x).unwrap().value
         }
         let mut splay = SplayWithKey::construct(
             vec![(1, 1), (2, 5), (3, 4), (4, 2), (5, 3)],

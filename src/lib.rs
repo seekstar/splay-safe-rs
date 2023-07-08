@@ -15,6 +15,7 @@ use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
 use std::fmt::Display;
+use std::ops::{Deref, DerefMut};
 
 pub trait BasicOps {
     #[allow(unused)]
@@ -153,6 +154,31 @@ impl<T: BasicOps> Node<T> {
     }
 }
 
+struct DataMutRef<'a, T: BasicOps> {
+    node: &'a mut Node<T>,
+}
+impl<'a, T: BasicOps> From<&'a mut Node<T>> for DataMutRef<'a, T> {
+    fn from(node: &'a mut Node<T>) -> Self {
+        Self { node }
+    }
+}
+impl<'a, T: BasicOps> Deref for DataMutRef<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.node.d
+    }
+}
+impl<'a, T: BasicOps> DerefMut for DataMutRef<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.node.d
+    }
+}
+impl<'a, T: BasicOps> Drop for DataMutRef<'a, T> {
+    fn drop(&mut self) {
+        self.node.push_up();
+    }
+}
+
 pub struct Range<'a, T> {
     rt: &'a mut Option<Box<Node<T>>>,
 }
@@ -187,18 +213,20 @@ impl<'a, T: BasicOps> Range<'a, T> {
         take_subtree_data(self.rt.take(), &mut elems);
         elems
     }
+    fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
+        Some(self.rt.as_mut()?.deref_mut().into())
+    }
     // Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
     where
         F: FnOnce(&mut T),
     {
-        let root = match self.rt.as_mut() {
-            Some(root) => root,
-            None => return false,
-        };
-        f(&mut root.d);
-        root.push_up();
-        return true;
+        if let Some(mut d) = self.root_data_mut() {
+            f(d.deref_mut());
+            true
+        } else {
+            false
+        }
     }
     fn __rotate_to_root(
         &mut self,
@@ -390,6 +418,9 @@ impl<T: BasicOps> Splay<T> {
 
     pub fn root_data(&self) -> Option<&T> {
         self.root.as_ref().map(|root| &root.d)
+    }
+    fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
+        self.root.as_mut().map(|root| root.deref_mut().into())
     }
     // Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
@@ -784,6 +815,28 @@ impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount> SubtreeCount
     }
 }
 
+pub struct ValueMutRef<'a, K: Ord, V: BasicOpsWithKey<K>> {
+    d: DataMutRef<'a, KeyValue<K, V>>,
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>> From<DataMutRef<'a, KeyValue<K, V>>>
+    for ValueMutRef<'a, K, V>
+{
+    fn from(data: DataMutRef<'a, KeyValue<K, V>>) -> Self {
+        Self { d: data }
+    }
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>> Deref for ValueMutRef<'a, K, V> {
+    type Target = V;
+    fn deref(&self) -> &Self::Target {
+        &self.d.value
+    }
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>> DerefMut for ValueMutRef<'a, K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.d.value
+    }
+}
+
 pub struct KeyRange<'a, K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
     range: Range<'a, KeyValue<K, V>>,
     comparator: &'a C,
@@ -800,6 +853,9 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
     }
     pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
         self.range.root_data()
+    }
+    pub fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
+        self.range.root_data_mut().map(|d| d.into())
     }
     pub fn collect_data(&self) -> Vec<&KeyValue<K, V>> {
         self.range.collect_data()
@@ -1040,6 +1096,9 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
         self.splay.root_data()
     }
+    fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
+        self.splay.root_data_mut().map(|d| d.into())
+    }
 
     // If the key does not already exist, then return the path to the insert
     // location.
@@ -1088,8 +1147,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         V::CountType: One,
     {
         if self.insert_with(key, |_| V::default()) == false {
-            self.splay
-                .update_root_data(|d| d.value.cnt_add(&V::CountType::one()));
+            self.root_value_mut().unwrap().cnt_add(&V::CountType::one());
         }
     }
 
@@ -1118,6 +1176,18 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         };
         self.splay.__rotate_to_root(prev, path);
         return false;
+    }
+    pub fn get_mut<E>(&mut self, key: &E) -> Option<ValueMutRef<K, V>>
+    where
+        C: Compare<K, E>,
+        E: ?Sized,
+    {
+        let ret = self.splay(key);
+        if ret {
+            self.root_value_mut()
+        } else {
+            None
+        }
     }
     pub fn remove<E>(&mut self, key: &E) -> Option<KeyValue<K, V>>
     where
