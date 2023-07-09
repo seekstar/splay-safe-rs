@@ -12,10 +12,10 @@ use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 use core::cmp::Ordering;
+use core::fmt::Display;
 use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
-use std::fmt::Display;
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 pub trait BasicOps {
     #[allow(unused)]
