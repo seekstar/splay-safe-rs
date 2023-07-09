@@ -236,6 +236,14 @@ impl<'a, T: BasicOps> Range<'a, T> {
         x.splay(path);
         *self.rt = Some(x);
     }
+    fn rotate_to_root_need_pushup(
+        &mut self,
+        mut x: Box<Node<T>>,
+        path: Vec<(Box<Node<T>>, bool)>,
+    ) {
+        x.__splay(path);
+        *self.rt = Some(x);
+    }
     fn rotate_to_root(
         &mut self,
         mut x: Box<Node<T>>,
@@ -407,6 +415,13 @@ impl<T: BasicOps> Splay<T> {
         path: Vec<(Box<Node<T>>, bool)>,
     ) {
         self.to_range().__rotate_to_root(x, path);
+    }
+    fn rotate_to_root_need_pushup(
+        &mut self,
+        x: Box<Node<T>>,
+        path: Vec<(Box<Node<T>>, bool)>,
+    ) {
+        self.to_range().rotate_to_root_need_pushup(x, path);
     }
     fn rotate_to_root(
         &mut self,
@@ -1043,6 +1058,90 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
     }
 }
 
+pub struct VacantEntry<'a, K: Ord, V: BasicOpsWithKey<K>, C> {
+    splay_path_key: Option<(
+        &'a mut SplayWithKey<K, V, C>,
+        Vec<(Box<Node<KeyValue<K, V>>>, bool)>,
+        K,
+    )>,
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C: Compare<K>>
+    VacantEntry<'a, K, V, C>
+{
+    fn new(
+        splay: &'a mut SplayWithKey<K, V, C>,
+        path: Vec<(Box<Node<KeyValue<K, V>>>, bool)>,
+        key: K,
+    ) -> Self {
+        Self {
+            splay_path_key: Some((splay, path, key)),
+        }
+    }
+    pub fn key(&self) -> &K {
+        &self.splay_path_key.as_ref().unwrap().2
+    }
+    pub fn insert(mut self, value: V) -> ValueMutRef<'a, K, V> {
+        let (splay, path, key) = self.splay_path_key.take().unwrap();
+        let node = Box::new(Node::new(KeyValue { key, value }));
+        splay.splay.rotate_to_root_need_pushup(node, path.into());
+        splay.root_value_mut().unwrap()
+    }
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> Drop for VacantEntry<'a, K, V, C> {
+    fn drop(&mut self) {
+        if let Some((splay, mut path, _)) = self.splay_path_key.take() {
+            if let Some((node, _)) = path.pop() {
+                splay.splay.__rotate_to_root(node, path);
+            }
+        }
+    }
+}
+
+pub struct OccupiedEntry<'a, K: Ord, V: BasicOpsWithKey<K>, C> {
+    splay: &'a mut SplayWithKey<K, V, C>,
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C: Compare<K>>
+    OccupiedEntry<'a, K, V, C>
+{
+    fn new(splay: &'a mut SplayWithKey<K, V, C>) -> Self {
+        Self { splay }
+    }
+    pub fn get_mut(&'a mut self) -> ValueMutRef<'a, K, V> {
+        self.splay.root_value_mut().unwrap()
+    }
+    pub fn into_mut(self) -> ValueMutRef<'a, K, V> {
+        self.splay.root_value_mut().unwrap()
+    }
+}
+
+pub enum Entry<'a, K: Ord, V: BasicOpsWithKey<K>, C> {
+    Vacant(VacantEntry<'a, K, V, C>),
+    // https://github.com/rust-lang/rfcs/issues/690
+    Occupied(OccupiedEntry<'a, K, V, C>, K),
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> Entry<'a, K, V, C> {
+    pub fn and_modify<F>(mut self, f: F) -> Entry<'a, K, V, C>
+    where
+        F: FnOnce(&K, &mut V),
+    {
+        if let Self::Occupied(entry, _) = &mut self {
+            let mut d = entry.splay.splay.root_data_mut().unwrap();
+            let d = d.deref_mut();
+            f(&d.key, &mut d.value);
+        }
+        self
+    }
+    pub fn or_insert(self, default: V) -> ValueMutRef<'a, K, V>
+    where
+        C: Compare<K>,
+    {
+        match self {
+            Self::Vacant(entry) => entry.insert(default),
+            Self::Occupied(entry, _) => entry.into_mut(),
+        }
+    }
+}
+
 pub struct SplayWithKey<K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
     splay: Splay<KeyValue<K, V>>,
     comparator: C,
@@ -1120,6 +1219,13 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
             }
         })
     }
+    pub fn entry(&mut self, key: K) -> Entry<K, V, C> {
+        if let Some(path) = self.find_insert_location(&key) {
+            Entry::Vacant(VacantEntry::new(self, path, key))
+        } else {
+            Entry::Occupied(OccupiedEntry::new(self), key)
+        }
+    }
     // If the key already exists, then make it the root and return false.
     // Otherwise, construct the data with `func`, insert the node, rotate
     // the new node to root, and return true.
@@ -1128,14 +1234,13 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     where
         F: FnOnce(&K) -> V,
     {
-        let path = match self.find_insert_location(&key) {
-            Some(path) => path,
-            None => return false,
-        };
-        let value = func(&key);
-        let node = Box::new(Node::new(KeyValue { key, value }));
-        self.splay.__rotate_to_root(node, path);
-        return true;
+        if let Entry::Vacant(entry) = self.entry(key) {
+            let value = func(entry.key());
+            entry.insert(value);
+            true
+        } else {
+            false
+        }
     }
     // Return successful or not.
     pub fn insert(&mut self, key: K, value: V) -> bool {
@@ -1146,9 +1251,9 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         V: CountAdd + Default,
         V::CountType: One,
     {
-        if self.insert_with(key, |_| V::default()) == false {
-            self.root_value_mut().unwrap().cnt_add(&V::CountType::one());
-        }
+        self.entry(key)
+            .and_modify(|_, v| v.cnt_add(&V::CountType::one()))
+            .or_insert(V::default());
     }
 
     pub fn splay<E>(&mut self, key: &E) -> bool
