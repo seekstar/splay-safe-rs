@@ -290,7 +290,7 @@ mod rand_with_count {
         T::SubtreeCountType:
             Copy + Ord + Add + SubAssign + Zero + One + Into<usize>,
     {
-        let std_ret = env.vec.get_mut(index.into());
+        let std_ret = env.vec.get(index.into());
         let k = index + T::SubtreeCountType::one();
         let found = env.splay.splay_kth(k);
         if let Some(data) = std_ret {
@@ -569,7 +569,7 @@ mod online_judge {
             splay: &mut SplayWithKey<i32, SplayValue>,
             x: i32,
         ) -> i32 {
-            splay.get_mut(&x).unwrap().value
+            splay.get(&x).unwrap().value
         }
         let mut splay = SplayWithKey::construct(
             vec![(1, 1), (2, 5), (3, 4), (4, 2), (5, 3)],

@@ -1282,6 +1282,18 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         self.splay.__rotate_to_root(prev, path);
         return false;
     }
+    pub fn get<E>(&mut self, key: &E) -> Option<&V>
+    where
+        C: Compare<K, E>,
+        E: ?Sized,
+    {
+        let ret = self.splay(key);
+        if ret {
+            Some(&self.root_data().unwrap().value)
+        } else {
+            None
+        }
+    }
     pub fn get_mut<E>(&mut self, key: &E) -> Option<ValueMutRef<K, V>>
     where
         C: Compare<K, E>,
