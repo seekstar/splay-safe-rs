@@ -252,6 +252,9 @@ impl<'a, T: BasicOps> Range<'a, T> {
         x.push_down();
         self.__rotate_to_root(x, path);
     }
+    // The root is at depth 1
+    // ans_depth == 0 means no ans, and the last node in path is rotated to
+    // root.
     fn rotate_ans_to_root(
         &mut self,
         mut path: Vec<(Box<Node<T>>, bool)>,
