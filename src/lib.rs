@@ -287,11 +287,8 @@ impl<'a, T: BasicOps> Range<'a, T> {
         mut where_to_go: F,
     ) -> Option<Vec<(Box<Node<T>>, bool)>> {
         let mut path = Vec::new();
-        let mut cur = match self.rt.take() {
-            Some(rt) => rt,
-            None => return Some(path),
-        };
-        loop {
+        let mut next = self.rt.take();
+        while let Some(mut cur) = next {
             let side = match where_to_go(&cur) {
                 Direction::Stop => {
                     self.rotate_to_root(cur, path);
@@ -300,14 +297,10 @@ impl<'a, T: BasicOps> Range<'a, T> {
                 Direction::Left => false,
                 Direction::Right => true,
             };
-            let next = cur.take_child(side);
+            next = cur.take_child(side);
             path.push((cur, side));
-            if let Some(nex) = next {
-                cur = nex
-            } else {
-                return Some(path);
-            }
         }
+        Some(path)
     }
 }
 
