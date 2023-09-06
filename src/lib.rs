@@ -236,7 +236,7 @@ impl<'a, T: BasicOps> Range<'a, T> {
         x.splay(path);
         *self.rt = Some(x);
     }
-    fn rotate_to_root_need_pushup(
+    fn rotate_to_root_defer_pushup(
         &mut self,
         mut x: Box<Node<T>>,
         path: Vec<(Box<Node<T>>, bool)>,
@@ -409,12 +409,12 @@ impl<T: BasicOps> Splay<T> {
     ) {
         self.to_range().__rotate_to_root(x, path);
     }
-    fn rotate_to_root_need_pushup(
+    fn rotate_to_root_defer_pushup(
         &mut self,
         x: Box<Node<T>>,
         path: Vec<(Box<Node<T>>, bool)>,
     ) {
-        self.to_range().rotate_to_root_need_pushup(x, path);
+        self.to_range().rotate_to_root_defer_pushup(x, path);
     }
     fn rotate_to_root(
         &mut self,
@@ -1076,7 +1076,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C: Compare<K>>
     pub fn insert(mut self, value: V) -> ValueMutRef<'a, K, V> {
         let (splay, path, key) = self.splay_path_key.take().unwrap();
         let node = Box::new(Node::new(KeyValue { key, value }));
-        splay.splay.rotate_to_root_need_pushup(node, path.into());
+        splay.splay.rotate_to_root_defer_pushup(node, path.into());
         splay.root_value_mut().unwrap()
     }
 }
