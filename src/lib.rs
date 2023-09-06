@@ -416,13 +416,6 @@ impl<T: BasicOps> Splay<T> {
     ) {
         self.to_range().rotate_to_root_defer_pushup(x, path);
     }
-    fn rotate_to_root(
-        &mut self,
-        x: Box<Node<T>>,
-        path: Vec<(Box<Node<T>>, bool)>,
-    ) {
-        self.to_range().rotate_to_root(x, path);
-    }
 
     pub fn root_data(&self) -> Option<&T> {
         self.root.as_ref().map(|root| &root.d)
@@ -1254,25 +1247,16 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         C: Compare<K, E>,
         E: ?Sized,
     {
-        let mut next = self.splay.root.take();
-        let mut path = Vec::new();
-        while let Some(mut cur) = next {
-            let res = self.comparator.compare(&cur.d.key, key);
-            if res == Ordering::Equal {
-                self.splay.rotate_to_root(cur, path);
-                return true;
-            }
-            let side = res == Ordering::Less;
-            next = cur.take_child(side);
-            path.push((cur, side));
-        }
+        let mut path = if let Some(path) = self.find_insert_location(key) {
+            path
+        } else {
+            return true;
+        };
         // Not found. Rotate the last accessed node to root to maintain
         // complexity.
-        let prev = match path.pop() {
-            Some((prev, _)) => prev,
-            None => return false,
-        };
-        self.splay.__rotate_to_root(prev, path);
+        if let Some((prev, _)) = path.pop() {
+            self.splay.__rotate_to_root(prev, path);
+        }
         return false;
     }
     pub fn get<E>(&mut self, key: &E) -> Option<&V>
