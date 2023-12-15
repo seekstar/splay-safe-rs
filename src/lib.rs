@@ -1148,7 +1148,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
             comparator,
         }
     }
-    fn new() -> Self
+    pub fn new() -> Self
     where
         C: Default,
     {
