@@ -7,15 +7,33 @@
 mod tests;
 
 pub use compare::Compare;
-use compare::Natural;
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 use core::cmp::Ordering;
 use core::fmt::Display;
+use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
 use core::ops::{Deref, DerefMut};
+
+// Extends compare::Natural
+pub struct Natural<T: Ord + ?Sized>(PhantomData<fn(&T)>);
+impl<T: Ord + ?Sized> Compare<T> for Natural<T> {
+    fn compare(&self, l: &T, r: &T) -> Ordering {
+        Ord::cmp(l, r)
+    }
+}
+impl<T: Ord + ?Sized> Default for Natural<T> {
+    fn default() -> Self {
+        Natural(PhantomData)
+    }
+}
+impl Compare<String, str> for Natural<String> {
+    fn compare(&self, l: &String, r: &str) -> Ordering {
+        l.as_str().cmp(r)
+    }
+}
 
 pub trait BasicOps {
     #[allow(unused)]
@@ -1245,6 +1263,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
             .or_insert(V::default());
     }
 
+    /// Return found or not
     pub fn splay<E>(&mut self, key: &E) -> bool
     where
         C: Compare<K, E>,
