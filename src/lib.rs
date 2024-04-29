@@ -4,6 +4,55 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+//! Splay implemented with safe rust.
+//!
+//! # Examples
+//!
+//! ```
+//! use splay_safe_rs::{BasicOpsWithKey, KeyValue, SplayWithKey};
+//! use std::ops::Bound;
+//!
+//! struct SplayValue {
+//!     vlen: usize,
+//!     kvsize: usize,
+//! }
+//! impl BasicOpsWithKey<String> for SplayValue {
+//!     fn push_up(
+//!         &mut self,
+//!         key: &String,
+//!         lc: Option<&KeyValue<String, Self>>,
+//!         rc: Option<&KeyValue<String, Self>>,
+//!     ) {
+//!         self.kvsize = key.len() + self.vlen;
+//!         if let Some(d) = lc {
+//!             self.kvsize += d.value.kvsize;
+//!         }
+//!         if let Some(d) = rc {
+//!             self.kvsize += d.value.kvsize;
+//!         }
+//!     }
+//! }
+//!
+//! let mut keys = SplayWithKey::<String, SplayValue>::new();
+//! keys.insert("aa".to_owned(), SplayValue { vlen: 1, kvsize: 3 });
+//! keys.insert("bb".to_owned(), SplayValue { vlen: 2, kvsize: 4 });
+//! keys.insert("cc".to_owned(), SplayValue { vlen: 3, kvsize: 5 });
+//! keys.insert("dd".to_owned(), SplayValue { vlen: 4, kvsize: 6 });
+//! assert_eq!(
+//!     keys.range::<str, _>((Bound::Included("bb"), Bound::Included("cc")))
+//!         .root_data()
+//!         .unwrap()
+//!         .value
+//!         .kvsize,
+//!     9
+//! );
+//! ```
+
+#![cfg_attr(not(test), no_std)]
+
+#[cfg(feature = "std")]
+extern crate std;
+
 mod tests;
 
 pub use compare::Compare;
@@ -11,11 +60,25 @@ use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 use core::cmp::Ordering;
-use core::fmt::Display;
+use core::fmt;
 use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
 use core::ops::{Deref, DerefMut};
+
+extern crate alloc;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use alloc::format;
+#[cfg(feature = "std")]
+use fmt::Display;
+#[cfg(feature = "std")]
+use std::print;
+#[cfg(feature = "std")]
+use std::println;
 
 // Extends compare::Natural
 pub struct Natural<T: Ord + ?Sized>(PhantomData<fn(&T)>);
@@ -46,7 +109,6 @@ impl BasicOps for () {}
 #[derive(Clone, PartialEq)]
 struct Node<T> {
     c: [Option<Box<Node<T>>>; 2],
-    // Number of elements in this node
     d: T,
 }
 
@@ -234,7 +296,7 @@ impl<'a, T: BasicOps> Range<'a, T> {
     fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
         Some(self.rt.as_mut()?.deref_mut().into())
     }
-    // Return updated or not
+    /// Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
     where
         F: FnOnce(&mut T),
@@ -330,7 +392,6 @@ pub struct Splay<T> {
 }
 
 impl<T> Splay<T> {
-    // use Basic::C as CT;
     pub fn new() -> Splay<T> {
         Splay { root: None }
     }
@@ -444,7 +505,7 @@ impl<T: BasicOps> Splay<T> {
     fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
         self.root.as_mut().map(|root| root.deref_mut().into())
     }
-    // Return updated or not
+    /// Return updated or not
     pub fn update_root_data<F>(&mut self, f: F) -> bool
     where
         F: FnOnce(&mut T),
@@ -636,7 +697,7 @@ impl<T: Count + SubtreeCount> Splay<T> {
     where
         T::CountType: Copy,
         T::SubtreeCountType:
-            std::fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
+            fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
     {
         let mut scnt = T::SubtreeCountType::from(*rt.d.cnt());
         if let Some(ref c) = rt.c[0] {
@@ -649,12 +710,12 @@ impl<T: Count + SubtreeCount> Splay<T> {
         }
         assert_eq!(scnt, *rt.d.subtree_count());
     }
-    // Only for DEBUG
+    /// Only for DEBUG
     pub fn check_sanity(&self)
     where
         T::CountType: Copy,
         T::SubtreeCountType:
-            std::fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
+            fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
     {
         if let Some(ref root) = self.root {
             self.check_sanity_subtree(root);
@@ -662,6 +723,7 @@ impl<T: Count + SubtreeCount> Splay<T> {
     }
 }
 
+#[cfg(feature = "std")]
 fn __print_subtree_non_empty<T, F>(
     rt: &Node<T>,
     str: &mut String,
@@ -694,6 +756,7 @@ fn __print_subtree_non_empty<T, F>(
 
     str.truncate(ori_len);
 }
+#[cfg(feature = "std")]
 fn __print_subtree<T, F>(
     rt: &Option<Box<Node<T>>>,
     str: &mut String,
@@ -708,6 +771,7 @@ fn __print_subtree<T, F>(
         println!("/\\");
     }
 }
+#[cfg(feature = "std")]
 fn print_subtree<T, F>(rt: &Option<Box<Node<T>>>, data_to_string: F)
 where
     T: BasicOps,
@@ -716,6 +780,7 @@ where
     __print_subtree(rt, &mut String::new(), data_to_string);
 }
 
+#[cfg(feature = "std")]
 impl<T: BasicOps> Splay<T> {
     pub fn print_tree_with<F>(&self, data_to_string: F)
     where
@@ -724,12 +789,14 @@ impl<T: BasicOps> Splay<T> {
         print_subtree(&self.root, data_to_string);
     }
 }
+#[cfg(feature = "std")]
 fn default_data_to_string<T>(data: &T) -> String
 where
     T: Display,
 {
     format!("{}", data)
 }
+#[cfg(feature = "std")]
 impl<T: BasicOps + Display> Splay<T> {
     pub fn print_tree(&self) {
         self.print_tree_with(default_data_to_string);
@@ -1122,7 +1189,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C: Compare<K>>
 
 pub enum Entry<'a, K: Ord, V: BasicOpsWithKey<K>, C> {
     Vacant(VacantEntry<'a, K, V, C>),
-    // https://github.com/rust-lang/rfcs/issues/690
+    /// https://github.com/rust-lang/rfcs/issues/690
     Occupied(OccupiedEntry<'a, K, V, C>, K),
 }
 impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> Entry<'a, K, V, C> {
@@ -1232,10 +1299,11 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
             Entry::Occupied(OccupiedEntry::new(self), key)
         }
     }
-    // If the key already exists, then make it the root and return false.
-    // Otherwise, construct the data with `func`, insert the node, rotate
-    // the new node to root, and return true.
-    // Return whether the insertion is successful or not.
+    /// If the key already exists, then make it the root and return false.
+    /// Otherwise, construct the data with `func`, insert the node, rotate
+    /// the new node to root, and return true.
+    ///
+    /// Returns whether the insertion is successful or not.
     pub fn insert_with<F>(&mut self, key: K, func: F) -> bool
     where
         F: FnOnce(&K) -> V,
@@ -1248,7 +1316,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
             false
         }
     }
-    // Return successful or not.
+    /// Return successful or not.
     pub fn insert(&mut self, key: K, value: V) -> bool {
         self.insert_with(key, |_| value)
     }
@@ -1471,7 +1539,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     }
 }
 impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
-    // Return updated or not
+    /// Return updated or not
     pub fn update_root_value<F>(&mut self, f: F) -> bool
     where
         F: FnOnce(&K, &mut V),
@@ -1505,16 +1573,17 @@ impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount, C> SplayWithKey<K, V, C> {
 impl<K: Ord, V: BasicOpsWithKey<K> + Count + SubtreeCount, C>
     SplayWithKey<K, V, C>
 {
-    // Only for DEBUG
+    /// Only for DEBUG
     pub fn check_sanity(&self)
     where
         V::CountType: Copy,
         V::SubtreeCountType:
-            std::fmt::Debug + From<V::CountType> + AddAssign + Eq + Copy,
+            fmt::Debug + From<V::CountType> + AddAssign + Eq + Copy,
     {
         self.splay.check_sanity()
     }
 }
+#[cfg(feature = "std")]
 impl<K: Ord, V: BasicOpsWithKey<K>, C> SplayWithKey<K, V, C> {
     pub fn print_tree_with<F>(&self, data_to_string: F)
     where
@@ -1578,6 +1647,7 @@ impl SubtreeCount for RankTreeValue {
     }
 }
 
+#[cfg(feature = "std")]
 fn ranktree_data_to_string<K: Ord + Display>(
     data: &KeyValue<K, RankTreeValue>,
 ) -> String {
@@ -1631,6 +1701,7 @@ impl<K: Ord> RankTree<K> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<K: Ord + std::fmt::Display> RankTree<K> {
     pub fn print_tree(&self) {
         self.rep.print_tree_with(ranktree_data_to_string);
