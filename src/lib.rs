@@ -681,16 +681,16 @@ fn __print_subtree_non_empty<T, F>(
     __print_subtree(&rt.c[0], str, data_to_string.clone());
     println!("{}", str);
     let len = str.len();
-    unsafe {
-        str.as_bytes_mut()[len - 1] = b'-';
-        str.as_bytes_mut()[len - 2] = b'-';
-    }
+    str.pop();
+    str.pop();
+    str.push('-');
+    str.push('-');
     print!("{}", str);
 
-    unsafe {
-        str.as_bytes_mut()[len - 1] = b' ';
-        str.as_bytes_mut()[len - 2] = b' ';
-    }
+    str.pop();
+    str.pop();
+    str.push(' ');
+    str.push(' ');
     __print_subtree(&rt.c[1], str, data_to_string);
 
     str.truncate(ori_len);

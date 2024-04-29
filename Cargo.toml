@@ -1,7 +1,10 @@
 [package]
 name = "splay-safe-rs"
-version = "0.7.9"
+version = "0.7.10"
 edition = "2021"
+description = "Splay implemented with safe rust"
+license = "MPL-2.0"
+repository = "https://github.com/seekstar/splay-safe-rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
