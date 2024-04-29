@@ -57,7 +57,6 @@ mod tests;
 
 pub use compare::Compare;
 use num_traits::{One, Zero};
-use serde::{Deserialize, Serialize};
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -79,6 +78,9 @@ use fmt::Display;
 use std::print;
 #[cfg(feature = "std")]
 use std::println;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 // Extends compare::Natural
 pub struct Natural<T: Ord + ?Sized>(PhantomData<fn(&T)>);
@@ -856,7 +858,8 @@ impl<K: Ord, V: BasicOps> BasicOpsWithKey<K> for V {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KeyValue<K: Ord, V: BasicOpsWithKey<K>> {
     pub key: K,
     pub value: V,

@@ -11,7 +11,7 @@ repository = "https://github.com/seekstar/splay-safe-rs"
 [dependencies]
 num-traits = "0.2"
 compare = "0.1"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 rand = "0.8"
@@ -19,5 +19,6 @@ rand-op = "^0.1.0"
 
 [features]
 # For backward compatibility
-default = ["std"]
+default = ["std", "serde"]
 std = []
+serde = ["dep:serde"]
