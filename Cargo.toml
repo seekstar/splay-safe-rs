@@ -15,4 +15,4 @@ serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 rand = "0.8"
-rand-op = { git = "https://github.com/seekstar/rand-op", version = "0.1" }
+rand-op = "^0.1.0"
