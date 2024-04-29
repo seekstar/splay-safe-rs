@@ -680,7 +680,6 @@ fn __print_subtree_non_empty<T, F>(
     str.push_str(" | ");
     __print_subtree(&rt.c[0], str, data_to_string.clone());
     println!("{}", str);
-    let len = str.len();
     str.pop();
     str.pop();
     str.push('-');
