@@ -952,6 +952,20 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         self.range.take_all_data()
     }
 
+    /// Return updated or not
+    pub fn update_root_value<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&K, &mut V),
+    {
+        let root = match self.range.rt.as_mut() {
+            Some(root) => root,
+            None => return false,
+        };
+        f(&root.d.key, &mut root.d.value);
+        root.push_up();
+        return true;
+    }
+
     /// # Arguments
     /// * ge
     /// 	- false: Find the first node whose value <= key.
@@ -1115,21 +1129,6 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         self.le_or_ge::<E, true>(key)
     }
 }
-impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
-    // Return updated or not
-    pub fn update_root_value<F>(&mut self, f: F) -> bool
-    where
-        F: FnOnce(&K, &mut V),
-    {
-        let root = match self.range.rt.as_mut() {
-            Some(root) => root,
-            None => return false,
-        };
-        f(&root.d.key, &mut root.d.value);
-        root.push_up();
-        return true;
-    }
-}
 
 pub struct VacantEntry<'a, K: Ord, V: BasicOpsWithKey<K>, C> {
     splay_path_key: Option<(
@@ -1259,17 +1258,25 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         Self::construct_with_comparator(v, C::default(), constructor)
     }
 
+    pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
+        self.splay.root_data()
+    }
+    fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
+        self.splay.root_data_mut().map(|d| d.into())
+    }
+
     fn to_range(&mut self) -> KeyRange<K, V, C> {
         KeyRange {
             range: self.splay.to_range(),
             comparator: &self.comparator,
         }
     }
-    pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
-        self.splay.root_data()
-    }
-    fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
-        self.splay.root_data_mut().map(|d| d.into())
+    /// Return updated or not
+    pub fn update_root_value<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&K, &mut V),
+    {
+        self.to_range().update_root_value(f)
     }
 
     // If the key does not already exist, then return the path to the insert
@@ -1536,15 +1543,6 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         let mut elems = Vec::new();
         take_subtree_data(self.splay.root.take(), &mut elems);
         elems
-    }
-}
-impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
-    /// Return updated or not
-    pub fn update_root_value<F>(&mut self, f: F) -> bool
-    where
-        F: FnOnce(&K, &mut V),
-    {
-        self.to_range().update_root_value(f)
     }
 }
 impl<K: Ord, V: BasicOpsWithKey<K> + CountSub, C> SplayWithKey<K, V, C> {
