@@ -105,6 +105,31 @@ mod rand_with_key {
             .collect();
         assert_eq!(std_ret, ret);
     }
+    fn general_iter_delete<K, V>(env: &mut GeneralEnv<K, V>, key: &K, n: usize)
+    where
+        K: Ord + Clone + std::fmt::Debug,
+        V: BasicOpsWithKey<K> + Clone + std::fmt::Debug + std::cmp::PartialEq,
+    {
+        let mut range = env.btree.range(key..);
+        let mut found = env.splay.splay_first_ge(key);
+        let mut keys = Vec::new();
+        for _ in 0..n {
+            if let Some((k, v)) = range.next() {
+                keys.push(k.clone());
+                assert!(found);
+                let ret;
+                (ret, found) = env.splay.pop_root_splay_next().unwrap();
+                assert_eq!(&ret.key, k);
+                assert_eq!(&ret.value, v);
+            } else {
+                assert!(!found);
+                break;
+            }
+        }
+        for key in &keys {
+            env.btree.remove(key);
+        }
+    }
     #[derive(Clone, Debug, PartialEq)]
     struct SplayValue {
         value: Vec<u8>,
@@ -171,6 +196,11 @@ mod rand_with_key {
             )
         };
         general_query_range(env, range);
+        true
+    }
+    fn iter_delete(rng: &mut StdRng, env: &mut Env) -> bool {
+        let key = rand_digits(rng, env.key_len);
+        general_iter_delete(env, &key, 10);
         true
     }
     fn rand_insert_query_first_lt_or_gt(magnitude: usize) {
@@ -246,6 +276,81 @@ mod rand_with_key {
     #[test]
     fn rand_insert_query_range_1e5() {
         rand_insert_query_long_range(5);
+    }
+
+    #[test]
+    fn pop_root_splay_next_1() {
+        let mut splay = SplayWithKey::<usize, ()>::new();
+        assert_eq!(splay.pop_root_splay_next(), None);
+        splay.insert(1, ());
+        let (ret, has_next) = splay.pop_root_splay_next().unwrap();
+        assert!(!has_next);
+        assert_eq!(ret.key, 1);
+        splay.insert(1, ());
+        splay.insert(2, ());
+        splay.query_smallest();
+        let (ret, has_next) = splay.pop_root_splay_next().unwrap();
+        assert!(has_next);
+        assert_eq!(ret.key, 1);
+        let (ret, has_next) = splay.pop_root_splay_next().unwrap();
+        assert!(!has_next);
+        assert_eq!(ret.key, 2);
+    }
+
+    fn seq_insert_pop_root_splay_next(n: usize) {
+        let mut splay = SplayWithKey::<usize, ()>::new();
+        for i in 0..n {
+            splay.insert(i, ());
+        }
+        assert_eq!(splay.query_smallest().unwrap().key, 0);
+        for i in 0..n {
+            let (ret, has_next) = splay.pop_root_splay_next().unwrap();
+            assert_eq!(ret.key, i);
+            if i == n - 1 {
+                assert!(!has_next);
+            } else {
+                assert!(has_next);
+            }
+        }
+        assert!(splay.is_empty());
+    }
+    #[test]
+    fn seq_insert_pop_root_splay_next_1e1() {
+        seq_insert_pop_root_splay_next(10);
+    }
+
+    fn rand_insert_iter_delete(magnitude: usize) {
+        let n = 10u64.pow(magnitude as u32);
+        rand_op(
+            &mut StdRng::seed_from_u64(233),
+            &mut Env {
+                splay: SplayWithKey::new(),
+                btree: BTreeMap::new(),
+                key_len: magnitude,
+                val_len: magnitude,
+            },
+            vec![OpCnt::new(insert, n), OpCnt::new(iter_delete, n / 100)],
+        );
+    }
+    #[test]
+    fn rand_insert_iter_delete_1e1() {
+        rand_insert_iter_delete(1);
+    }
+    #[test]
+    fn rand_insert_iter_delete_1e2() {
+        rand_insert_iter_delete(2);
+    }
+    #[test]
+    fn rand_insert_iter_delete_1e3() {
+        rand_insert_iter_delete(3);
+    }
+    #[test]
+    fn rand_insert_iter_delete_1e4() {
+        rand_insert_iter_delete(4);
+    }
+    #[test]
+    fn rand_insert_iter_delete_1e5() {
+        rand_insert_iter_delete(5);
     }
 }
 

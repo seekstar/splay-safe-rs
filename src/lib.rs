@@ -512,29 +512,64 @@ impl<T: BasicOps> Splay<T> {
     {
         self.to_range().update_root_data(f)
     }
-    fn take_root(&mut self) -> Option<Box<Node<T>>> {
+
+    fn splay_first_or_last(&mut self, is_last: bool) {
+        let mut path = Vec::new();
+        find_smallest_or_largest(self.root.take(), is_last, &mut path);
+        let x = match path.pop() {
+            Some((x, _)) => x,
+            None => return,
+        };
+        self.__rotate_to_root(x, path);
+    }
+    fn take_first_or_last(&mut self, is_last: bool) -> Option<Box<Node<T>>> {
+        self.splay_first_or_last(is_last);
         let mut root = match self.root.take() {
             Some(root) => root,
             None => return None,
         };
-        let mut path = root.find_prev_or_next(false);
+        self.root = root.take_child(!is_last);
+        Some(root)
+    }
+    fn pop_first_or_last(&mut self, is_last: bool) -> Option<T> {
+        self.take_first_or_last(is_last).map(|rt| rt.d)
+    }
+
+    // second is whether there is a prev/next node
+    fn take_root_and_splay(
+        &mut self,
+        splay_next: bool,
+    ) -> Option<(Box<Node<T>>, bool)> {
+        let mut root = match self.root.take() {
+            Some(root) => root,
+            None => return None,
+        };
+        let mut path = root.find_prev_or_next(splay_next);
         let mut x = match path.pop() {
             Some((x, _)) => x,
             None => {
-                self.root = root.take_child(true);
-                return Some(root);
+                self.root = root.take_child(!splay_next);
+                return Some((root, false));
             }
         };
         x.__splay(path);
-        x.set_child(true, root.take_child(true));
+        x.set_child(!splay_next, root.take_child(!splay_next));
         self.root = Some(x);
-        return Some(root);
+        return Some((root, true));
     }
     fn delete_root(&mut self) -> bool {
-        self.take_root().is_some()
+        self.take_root_and_splay(false).is_some()
+    }
+    fn pop_root_and_splay(&mut self, splay_next: bool) -> Option<(T, bool)> {
+        self.take_root_and_splay(splay_next)
+            .map(|(rt, exists)| (rt.d, exists))
+    }
+    /// Return (root popped, whether there exists a next node)
+    pub fn pop_root_splay_next(&mut self) -> Option<(T, bool)> {
+        self.pop_root_and_splay(true)
     }
     fn pop_root(&mut self) -> Option<T> {
-        self.take_root().map(|rt| rt.d)
+        self.pop_root_and_splay(false).map(|(rt, _)| rt)
     }
     fn collect_data(&self) -> Vec<&T> {
         let mut elems = Vec::new();
@@ -1258,11 +1293,28 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         Self::construct_with_comparator(v, C::default(), constructor)
     }
 
+    pub fn comparator(&self) -> &C {
+        &self.comparator
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.splay.is_empty()
+    }
     pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
         self.splay.root_data()
     }
     fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
         self.splay.root_data_mut().map(|d| d.into())
+    }
+    pub fn pop_smallest(&mut self) -> Option<KeyValue<K, V>> {
+        self.splay.pop_first_or_last(false)
+    }
+    pub fn pop_largest(&mut self) -> Option<KeyValue<K, V>> {
+        self.splay.pop_first_or_last(true)
+    }
+    /// Return root popped and whether there exists a next node
+    pub fn pop_root_splay_next(&mut self) -> Option<(KeyValue<K, V>, bool)> {
+        self.splay.pop_root_splay_next()
     }
 
     fn to_range(&mut self) -> KeyRange<K, V, C> {
@@ -1386,34 +1438,17 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     {
         let ret = self.splay(key);
         if ret {
-            Some(self.splay.take_root().unwrap().d)
+            Some(self.splay.pop_root().unwrap())
         } else {
             None
         }
     }
 
-    fn splay_smallest_or_largest(&mut self, is_largest: bool) {
-        let mut path = Vec::new();
-        find_smallest_or_largest(self.splay.root.take(), is_largest, &mut path);
-        let x = match path.pop() {
-            Some((x, _)) => x,
-            None => return,
-        };
-        self.splay.__rotate_to_root(x, path);
-    }
-    pub fn pop_smallest(&mut self) -> Option<KeyValue<K, V>> {
-        self.splay_smallest_or_largest(false);
-        self.splay.pop_root()
-    }
-    pub fn pop_largest(&mut self) -> Option<KeyValue<K, V>> {
-        self.splay_smallest_or_largest(true);
-        self.splay.pop_root()
-    }
     fn query_smallest_or_largest(
         &mut self,
         is_largest: bool,
     ) -> Option<&KeyValue<K, V>> {
-        self.splay_smallest_or_largest(is_largest);
+        self.splay.splay_first_or_last(is_largest);
         self.root_data()
     }
     pub fn query_smallest(&mut self) -> Option<&KeyValue<K, V>> {
