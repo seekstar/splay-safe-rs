@@ -442,10 +442,7 @@ where
 }
 
 impl<T: BasicOps> Splay<T> {
-    pub fn from_with_constructor<E, F>(
-        mut v: Vec<E>,
-        constructor: F,
-    ) -> Splay<T>
+    pub fn construct<E, F>(mut v: Vec<E>, constructor: F) -> Splay<T>
     where
         F: Copy + Fn(E) -> T,
     {
@@ -457,7 +454,7 @@ impl<T: BasicOps> Splay<T> {
 
 impl<E, T: BasicOps + From<E>> From<Vec<E>> for Splay<T> {
     fn from(v: Vec<E>) -> Splay<T> {
-        Splay::from_with_constructor(v, T::from)
+        Splay::construct(v, T::from)
     }
 }
 
@@ -1336,7 +1333,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         F: Copy + Fn(E) -> KeyValue<K, V>,
     {
         Self {
-            splay: Splay::from_with_constructor(v, constructor),
+            splay: Splay::construct(v, constructor),
             comparator,
         }
     }
