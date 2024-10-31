@@ -298,10 +298,9 @@ impl<'a, T: BasicOps> Range<'a, T> {
     fn root_data(&self) -> Option<&T> {
         self.rt.as_ref().map(|rt| &rt.d)
     }
-    /// Warning: This function does not perform push_down.
-    pub fn collect_data(&self) -> Vec<&T> {
+    pub fn collect_data(&mut self) -> Vec<&T> {
         let mut elems = Vec::new();
-        collect_subtree_data(&self.rt, &mut elems);
+        collect_subtree_data(&mut self.rt, &mut elems);
         elems
     }
     pub fn take_all_data(self) -> Vec<T> {
@@ -447,17 +446,23 @@ impl<E, T: BasicOps + From<E>> From<Vec<E>> for Splay<T> {
 }
 
 fn collect_non_empty_subtree_data<'a, T>(
-    rt: &'a Box<Node<T>>,
+    rt: &'a mut Box<Node<T>>,
     elems: &mut Vec<&'a T>,
-) {
-    collect_subtree_data(&rt.c[0], elems);
+) where
+    T: BasicOps,
+{
+    rt.push_down();
+    let (lc, rc) = rt.c.split_at_mut(1);
+    collect_subtree_data(&mut lc[0], elems);
     elems.push(&rt.d);
-    collect_subtree_data(&rt.c[1], elems);
+    collect_subtree_data(&mut rc[0], elems);
 }
 fn collect_subtree_data<'a, T>(
-    rt: &'a Option<Box<Node<T>>>,
+    rt: &'a mut Option<Box<Node<T>>>,
     elems: &mut Vec<&'a T>,
-) {
+) where
+    T: BasicOps,
+{
     if let Some(rt) = rt {
         collect_non_empty_subtree_data(rt, elems);
     }
@@ -565,9 +570,9 @@ impl<T: BasicOps> Splay<T> {
     fn pop_root(&mut self) -> Option<T> {
         self.pop_root_and_splay(false).map(|(rt, _)| rt)
     }
-    fn collect_data(&self) -> Vec<&T> {
+    fn collect_data(&mut self) -> Vec<&T> {
         let mut elems = Vec::new();
-        collect_subtree_data(&self.root, &mut elems);
+        collect_subtree_data(&mut self.root, &mut elems);
         elems
     }
     pub fn take_all_data(mut self) -> Vec<T> {
@@ -1013,7 +1018,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
     pub fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
         self.range.root_data_mut().map(|d| d.into())
     }
-    pub fn collect_data(&self) -> Vec<&KeyValue<K, V>> {
+    pub fn collect_data(&mut self) -> Vec<&KeyValue<K, V>> {
         self.range.collect_data()
     }
     pub fn take_all_data(self) -> Vec<KeyValue<K, V>> {
@@ -1575,7 +1580,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         ans
     }
 
-    pub fn collect_data(&self) -> Vec<&KeyValue<K, V>> {
+    pub fn collect_data(&mut self) -> Vec<&KeyValue<K, V>> {
         self.splay.collect_data()
     }
     pub fn take_all_data(&mut self) -> Vec<KeyValue<K, V>> {

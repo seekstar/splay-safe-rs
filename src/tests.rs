@@ -94,7 +94,7 @@ mod rand_with_key {
     {
         let std_ret: Vec<(&K, &V)> =
             env.btree.range(range.clone()).into_iter().collect();
-        let range = env.splay.range(range);
+        let mut range = env.splay.range(range);
         let ret: Vec<(&K, &V)> = range
             .collect_data()
             .iter()
@@ -623,9 +623,9 @@ mod online_judge {
         assert_eq!(point_query(&mut splay, 4), 10);
 
         // Additional
-        let range = splay.range((Included(6), Included(6)));
+        let mut range = splay.range((Included(6), Included(6)));
         assert!(range.collect_data().is_empty());
-        let range = splay.range((Included(0), Included(0)));
+        let mut range = splay.range((Included(0), Included(0)));
         assert!(range.collect_data().is_empty());
         let range = splay.range((Included(2), Included(2)));
         assert_eq!(
