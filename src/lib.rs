@@ -312,18 +312,6 @@ impl<'a, T: BasicOps> Range<'a, T> {
     fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
         Some(self.rt.as_mut()?.deref_mut().into())
     }
-    /// Return updated or not
-    pub fn update_root_data<F>(&mut self, f: F) -> bool
-    where
-        F: FnOnce(&mut T),
-    {
-        if let Some(mut d) = self.root_data_mut() {
-            f(d.deref_mut());
-            true
-        } else {
-            false
-        }
-    }
     fn __rotate_to_root(
         &mut self,
         mut x: Box<Node<T>>,
@@ -517,13 +505,6 @@ impl<T: BasicOps> Splay<T> {
     }
     fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
         self.root.as_mut().map(|root| root.deref_mut().into())
-    }
-    /// Return updated or not
-    pub fn update_root_data<F>(&mut self, f: F) -> bool
-    where
-        F: FnOnce(&mut T),
-    {
-        self.to_range().update_root_data(f)
     }
 
     fn splay_first_or_last(&mut self, is_last: bool) {
