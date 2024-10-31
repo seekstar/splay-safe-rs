@@ -41,19 +41,16 @@ mod rand_with_key {
     }
     fn general_insert<K, V>(env: &mut GeneralEnv<K, V>, key: K, value: V)
     where
-        K: Ord + Clone,
-        V: Clone + BasicOpsWithKey<K>,
+        K: Ord + Clone + core::fmt::Debug,
+        V: Clone + BasicOpsWithKey<K> + core::cmp::PartialEq + core::fmt::Debug,
     {
-        let mut std_exists = false;
-        let succeed = env.splay.insert(key.clone(), value.clone());
-        env.btree
-            .entry(key)
-            .and_modify(|_| std_exists = true)
-            .or_insert_with(|| {
-                std_exists = false;
-                value
-            });
-        assert_eq!(std_exists, !succeed);
+        let old_key_value = env.splay.insert(key.clone(), value.clone());
+        let old_value = old_key_value.map(|(old_key, old_value)| {
+            assert_eq!(old_key, key);
+            old_value
+        });
+        let std_old_value = env.btree.insert(key, value);
+        assert_eq!(old_value, std_old_value);
     }
     fn general_query_first_lt<K, V>(env: &mut GeneralEnv<K, V>, key: &K)
     where
@@ -518,8 +515,8 @@ mod online_judge {
         }
         impl BasicOps for SplayValue {}
         let mut splay = SplayWithKey::<i32, SplayValue>::new();
-        assert!(splay.insert(1, 1.into()));
-        assert!(splay.insert(5, 2.into()));
+        assert!(splay.insert(1, 1.into()).is_none());
+        assert!(splay.insert(5, 2.into()).is_none());
         assert_eq!(
             splay.pop_largest(),
             Some(KeyValue {
@@ -527,7 +524,7 @@ mod online_judge {
                 value: 2.into()
             })
         );
-        assert!(splay.insert(3, 3.into()));
+        assert!(splay.insert(3, 3.into()).is_none());
         assert_eq!(
             splay.pop_smallest(),
             Some(KeyValue {
@@ -535,7 +532,7 @@ mod online_judge {
                 value: 1.into()
             })
         );
-        assert!(splay.insert(2, 5.into()));
+        assert!(splay.insert(2, 5.into()).is_none());
         assert_eq!(
             splay.collect_data(),
             vec![

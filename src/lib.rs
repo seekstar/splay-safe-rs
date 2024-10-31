@@ -1391,26 +1391,18 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
             Entry::Occupied(OccupiedEntry::new(self), key)
         }
     }
-    /// If the key already exists, then make it the root and return false.
-    /// Otherwise, construct the data with `func`, insert the node, rotate
-    /// the new node to root, and return true.
-    ///
-    /// Returns whether the insertion is successful or not.
-    pub fn insert_with<F>(&mut self, key: K, func: F) -> bool
-    where
-        F: FnOnce(&K) -> V,
-    {
-        if let Entry::Vacant(entry) = self.entry(key) {
-            let value = func(entry.key());
-            entry.insert(value);
-            true
-        } else {
-            false
+    /// If already exists, replace and return the old key and value.
+    pub fn insert(&mut self, key: K, mut value: V) -> Option<(K, V)> {
+        match self.entry(key) {
+            Entry::Occupied(mut entry, key) => {
+                core::mem::swap(&mut entry.get_mut().d.value, &mut value);
+                return Some((key, value));
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(value);
+                return None;
+            }
         }
-    }
-    /// Return successful or not.
-    pub fn insert(&mut self, key: K, value: V) -> bool {
-        self.insert_with(key, |_| value)
     }
     pub fn insert_or_inc_cnt(&mut self, key: K)
     where
