@@ -356,85 +356,43 @@ mod rand_with_key {
 
 #[cfg(test)]
 mod rand_with_count {
-    use std::{
-        fmt::Debug,
-        ops::{Add, SubAssign},
-    };
+    use std::fmt::Debug;
 
-    use num_traits::{One, Zero};
     use rand::{prelude::Distribution, rngs::StdRng, Rng, SeedableRng};
     use rand_op::{rand_op, OpCnt};
 
-    use crate::{BasicOps, Splay, SubtreeCount};
+    use crate::{RankTree, Splay};
 
-    struct GeneralEnv<T: SubtreeCount> {
-        splay: Splay<T>,
+    struct GeneralEnv<T> {
+        splay: RankTree<T>,
         vec: Vec<T>,
     }
-    fn general_insert<T>(
-        env: &mut GeneralEnv<T>,
-        index: T::SubtreeCountType,
-        data: T,
-    ) where
-        T: SubtreeCount + Clone,
-        T::SubtreeCountType: Clone
-            + Ord
-            + for<'a> SubAssign<&'a T::SubtreeCountType>
-            + Zero
-            + One
-            + Into<usize>,
+    fn general_insert<T>(env: &mut GeneralEnv<T>, index: usize, data: T)
+    where
+        T: Clone,
     {
-        env.splay.insert_at_index(index.clone(), data.clone());
+        env.splay.insert_at_index(index, data.clone().into());
         env.vec.insert(index.into(), data);
     }
-    fn general_find_by_index<T>(
-        env: &mut GeneralEnv<T>,
-        index: T::SubtreeCountType,
-    ) where
-        T: SubtreeCount + PartialEq + Debug,
-        T::SubtreeCountType:
-            Copy + Ord + Add + SubAssign + Zero + One + Into<usize>,
+    fn general_find_by_index<T>(env: &mut GeneralEnv<T>, index: usize)
+    where
+        T: PartialEq + Debug,
     {
-        let std_ret = env.vec.get(index.into());
-        let k = index + T::SubtreeCountType::one();
+        let std_ret = env.vec.get(index);
+        let k = index + 1;
         let found = env.splay.splay_kth(k);
         if let Some(data) = std_ret {
             assert!(found);
-            assert_eq!(data, env.splay.root_data().unwrap());
+            assert_eq!(data, &env.splay.root_data().unwrap().value);
         } else {
             assert!(!found);
         }
     }
-    #[derive(Clone, Debug)]
-    struct SplayData {
-        value: u64,
-        scnt: usize,
-    }
-    impl PartialEq for SplayData {
-        fn eq(&self, other: &Self) -> bool {
-            self.value == other.value
-        }
-    }
-    impl BasicOps for SplayData {
-        fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
-            self.scnt = 1 + lc.map_or(0, |d| d.scnt) + rc.map_or(0, |d| d.scnt);
-        }
-    }
-    impl SubtreeCount for SplayData {
-        type SubtreeCountType = usize;
-        fn subtree_count(&self) -> &Self::SubtreeCountType {
-            &self.scnt
-        }
-    }
-    type Env = GeneralEnv<SplayData>;
+    type Env = GeneralEnv<u64>;
     fn insert(rng: &mut StdRng, env: &mut Env) -> bool {
         let index =
             rand::distributions::Uniform::new(0, env.vec.len() + 1).sample(rng);
-        let data = SplayData {
-            value: rng.gen(),
-            scnt: 1,
-        };
-        general_insert(env, index, data);
+        general_insert(env, index, rng.gen());
         true
     }
     fn find(rng: &mut StdRng, env: &mut Env) -> bool {
@@ -474,23 +432,21 @@ mod rand_with_count {
 
 #[cfg(test)]
 mod online_judge {
-    use crate::{
-        BasicOps, Count, CountAdd, CountSub, KeyValue, RankTree, SplayWithKey,
-    };
+    use crate::{BasicOps, CountedRankTreeWithKey, KeyValue, SplayWithKey};
     use std::ops::Bound::Included;
 
     #[test]
     fn luogu_1486() {
-        let mut splay = RankTree::<i32>::new();
-        splay.insert(60);
-        splay.insert(70);
+        let mut splay = CountedRankTreeWithKey::<i32>::new();
+        splay.insert_or_inc_cnt(60);
+        splay.insert_or_inc_cnt(70);
         assert_eq!(splay.size(), 2);
-        assert_eq!(splay.query_kth(1), Some(&60));
-        splay.insert(80);
+        assert_eq!(splay.query_kth_key(1), Some(&60));
+        splay.insert_or_inc_cnt(80);
         splay.del_smaller(&75);
         assert_eq!(splay.size(), 1);
-        assert_eq!(splay.query_kth(1), Some(&80));
-        assert_eq!(splay.query_kth(2), None);
+        assert_eq!(splay.query_kth_key(1), Some(&80));
+        assert_eq!(splay.query_kth_key(2), None);
     }
 
     #[test]
@@ -532,32 +488,8 @@ mod online_judge {
 
     #[test]
     fn luogu_1090() {
-        struct SplayValue {
-            cnt: u32,
-        }
-        impl BasicOps for SplayValue {}
-        impl Default for SplayValue {
-            fn default() -> Self {
-                SplayValue { cnt: 1 }
-            }
-        }
-        impl Count for SplayValue {
-            type CountType = u32;
-            fn cnt(&self) -> &Self::CountType {
-                &self.cnt
-            }
-        }
-        impl CountAdd for SplayValue {
-            fn cnt_add(&mut self, delta: &Self::CountType) {
-                self.cnt += delta;
-            }
-        }
-        impl CountSub for SplayValue {
-            fn cnt_sub(&mut self, delta: &Self::CountType) {
-                self.cnt -= delta;
-            }
-        }
-        let mut splay = SplayWithKey::<i32, SplayValue>::from(vec![1, 2, 9]);
+        let mut splay =
+            SplayWithKey::<i32, u32>::from(vec![(1, 1), (2, 1), (9, 1)]);
         assert_eq!(splay.query_smallest().unwrap().key, 1);
         assert!(splay.deref_root());
         assert_eq!(splay.query_smallest().unwrap().key, 2);
@@ -750,39 +682,8 @@ mod online_judge {
 
     #[test]
     fn luogu_1428() {
-        struct SplayValue {
-            cnt: u8,
-            scnt: u8,
-        }
-        impl BasicOps for SplayValue {
-            fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
-                self.scnt = self.cnt;
-                if let Some(c) = lc {
-                    self.scnt += c.scnt;
-                }
-                if let Some(c) = rc {
-                    self.scnt += c.scnt;
-                }
-            }
-        }
-        impl Default for SplayValue {
-            fn default() -> Self {
-                SplayValue { cnt: 1, scnt: 1 }
-            }
-        }
-        impl Count for SplayValue {
-            type CountType = u8;
-            fn cnt(&self) -> &Self::CountType {
-                &self.cnt
-            }
-        }
-        impl CountAdd for SplayValue {
-            fn cnt_add(&mut self, delta: &Self::CountType) {
-                self.cnt += delta;
-            }
-        }
         fn num_less_than(
-            splay: &mut SplayWithKey<u8, SplayValue>,
+            splay: &mut CountedRankTreeWithKey<u8, u8>,
             x: u8,
         ) -> u8 {
             match splay.to_range().lt(&x).root_data() {
@@ -790,7 +691,7 @@ mod online_judge {
                 None => 0,
             }
         }
-        let mut splay = SplayWithKey::<u8, SplayValue>::new();
+        let mut splay = CountedRankTreeWithKey::<u8, u8>::new();
         assert_eq!(num_less_than(&mut splay, 4), 0);
         splay.insert_or_inc_cnt(4);
         assert_eq!(num_less_than(&mut splay, 3), 0);

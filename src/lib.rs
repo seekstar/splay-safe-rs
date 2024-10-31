@@ -106,6 +106,22 @@ pub trait BasicOps {
 }
 impl BasicOps for () {}
 
+impl BasicOps for usize {}
+impl BasicOps for u8 {}
+impl BasicOps for u16 {}
+impl BasicOps for u32 {}
+impl BasicOps for u64 {}
+#[cfg(has_i128)]
+impl BasicOps for u128 {}
+
+impl BasicOps for isize {}
+impl BasicOps for i8 {}
+impl BasicOps for i16 {}
+impl BasicOps for i32 {}
+impl BasicOps for i64 {}
+#[cfg(has_i128)]
+impl BasicOps for i128 {}
+
 #[derive(Clone, PartialEq)]
 struct Node<T> {
     c: [Option<Box<Node<T>>>; 2],
@@ -583,7 +599,10 @@ impl<T: BasicOps> Splay<T> {
 
 pub trait Count: BasicOps {
     type CountType;
-    fn cnt(&self) -> &Self::CountType;
+    // Don't return reference because sometimes we just want it to return one,
+    // and it would be difficult to return the reference to one with a static
+    // lifetime if the type is unknown.
+    fn cnt(&self) -> Self::CountType;
 }
 
 pub trait CountAdd: Count {
@@ -593,9 +612,46 @@ pub trait CountAdd: Count {
 pub trait CountSub: Count {
     fn cnt_sub(&mut self, delta: &Self::CountType);
 }
-pub trait SubtreeCount: BasicOps {
-    type SubtreeCountType;
-    fn subtree_count(&self) -> &Self::SubtreeCountType;
+
+macro_rules! impl_count {
+    ($t:ty) => {
+        impl Count for $t {
+            type CountType = $t;
+            fn cnt(&self) -> Self::CountType {
+                *self
+            }
+        }
+        impl CountAdd for $t {
+            fn cnt_add(&mut self, delta: &Self::CountType) {
+                *self += delta;
+            }
+        }
+        impl CountSub for $t {
+            fn cnt_sub(&mut self, delta: &Self::CountType) {
+                *self -= delta;
+            }
+        }
+    };
+}
+impl_count!(usize);
+impl_count!(u8);
+impl_count!(u16);
+impl_count!(u32);
+impl_count!(u64);
+#[cfg(has_i128)]
+impl_count!(u128);
+
+impl_count!(isize);
+impl_count!(i8);
+impl_count!(i16);
+impl_count!(i32);
+impl_count!(i64);
+#[cfg(has_i128)]
+impl_count!(i128);
+
+pub trait Rank: Count {
+    type RankType;
+    fn subtree_count(&self) -> &Self::RankType;
 }
 
 impl<T: CountSub> Splay<T> {
@@ -617,7 +673,7 @@ impl<T: CountSub> Splay<T> {
     }
 }
 
-impl<'a, T: SubtreeCount> Range<'a, T> {
+impl<'a, T: Rank> Range<'a, T> {
     /// If T implements Count, then Count::cnt() should always return 1.
     /// We can't enforce this with the compiler because currently we can't
     /// define a trait CountIsOne : Count and override the "cnt" method of
@@ -625,13 +681,12 @@ impl<'a, T: SubtreeCount> Range<'a, T> {
     fn find_insert_location_by_index(
         &mut self,
         // Starts from zero
-        mut index: T::SubtreeCountType,
+        mut index: T::RankType,
     ) -> Option<Vec<(Box<Node<T>>, bool)>>
     where
-        T::SubtreeCountType:
-            Ord + for<'b> SubAssign<&'b T::SubtreeCountType> + Zero + One,
+        T::RankType: Ord + for<'b> SubAssign<&'b T::RankType> + Zero + One,
     {
-        let zero = T::SubtreeCountType::zero();
+        let zero = T::RankType::zero();
         self.walk(|node| {
             assert!(&index <= node.d.subtree_count());
             let lscnt =
@@ -640,15 +695,14 @@ impl<'a, T: SubtreeCount> Range<'a, T> {
                 Direction::Left
             } else {
                 index -= lscnt;
-                index -= &T::SubtreeCountType::one();
+                index -= &T::RankType::one();
                 Direction::Right
             }
         })
     }
-    fn insert_at_index(&mut self, index: T::SubtreeCountType, data: T)
+    fn insert_at_index(&mut self, index: T::RankType, data: T)
     where
-        T::SubtreeCountType:
-            Ord + for<'b> SubAssign<&'b T::SubtreeCountType> + Zero + One,
+        T::RankType: Ord + for<'b> SubAssign<&'b T::RankType> + Zero + One,
     {
         let path = match self.find_insert_location_by_index(index) {
             Some(path) => path,
@@ -657,22 +711,20 @@ impl<'a, T: SubtreeCount> Range<'a, T> {
         let node = Box::new(Node::new(data));
         self.__rotate_to_root(node, path);
     }
-    fn splay_kth(&mut self, mut k: T::SubtreeCountType) -> bool
+    fn splay_kth(&mut self, mut k: T::RankType) -> bool
     where
-        T::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
+        T::RankType: Ord + Copy + Zero + Add + SubAssign,
     {
         let mut next = self.rt.take();
         let mut path = Vec::new();
         while let Some(mut cur) = next {
             cur.push_down();
-            let lscnt =
-                cur.c[0].as_ref().map_or(T::SubtreeCountType::zero(), |lc| {
-                    *lc.d.subtree_count()
-                });
-            let rscnt =
-                cur.c[1].as_ref().map_or(T::SubtreeCountType::zero(), |rc| {
-                    *rc.d.subtree_count()
-                });
+            let lscnt = cur.c[0]
+                .as_ref()
+                .map_or(T::RankType::zero(), |lc| *lc.d.subtree_count());
+            let rscnt = cur.c[1]
+                .as_ref()
+                .map_or(T::RankType::zero(), |rc| *rc.d.subtree_count());
             // TODO: Introduce "Sub" trait requirement in the next version with breaking changes.
             let mut ls_or_cur_cnt = *cur.d.subtree_count();
             ls_or_cur_cnt -= rscnt;
@@ -697,20 +749,19 @@ impl<'a, T: SubtreeCount> Range<'a, T> {
     }
 }
 
-impl<T: SubtreeCount> Splay<T> {
-    pub fn size(&self) -> T::SubtreeCountType
+impl<T: Rank> Splay<T> {
+    pub fn size(&self) -> T::RankType
     where
-        T::SubtreeCountType: Zero + Copy,
+        T::RankType: Zero + Copy,
     {
         match self.root {
             Some(ref root) => *root.d.subtree_count(),
-            None => T::SubtreeCountType::zero(),
+            None => T::RankType::zero(),
         }
     }
-    pub fn insert_at_index(&mut self, index: T::SubtreeCountType, data: T)
+    pub fn insert_at_index(&mut self, index: T::RankType, data: T)
     where
-        T::SubtreeCountType:
-            Ord + for<'a> SubAssign<&'a T::SubtreeCountType> + Zero + One,
+        T::RankType: Ord + for<'a> SubAssign<&'a T::RankType> + Zero + One,
     {
         self.to_range().insert_at_index(index, data)
     }
@@ -719,22 +770,29 @@ impl<T: SubtreeCount> Splay<T> {
     ///
     /// If not found, then the last accessed node will be the root, and return
     /// false.
-    pub fn splay_kth<'a>(&mut self, k: T::SubtreeCountType) -> bool
+    pub fn splay_kth<'a>(&mut self, k: T::RankType) -> bool
     where
-        T::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
+        T::RankType: Ord + Copy + Zero + Add + SubAssign,
     {
         self.to_range().splay_kth(k)
     }
-}
+    pub fn query_kth<'a>(&mut self, k: T::RankType) -> Option<&T>
+    where
+        T::RankType: Ord + Copy + Zero + Add + SubAssign,
+    {
+        if self.splay_kth(k) {
+            self.root_data()
+        } else {
+            None
+        }
+    }
 
-impl<T: Count + SubtreeCount> Splay<T> {
     fn check_sanity_subtree<'a>(&self, rt: &Box<Node<T>>)
     where
         T::CountType: Copy,
-        T::SubtreeCountType:
-            fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
+        T::RankType: fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
     {
-        let mut scnt = T::SubtreeCountType::from(*rt.d.cnt());
+        let mut scnt = T::RankType::from(rt.d.cnt());
         if let Some(ref c) = rt.c[0] {
             scnt += *c.d.subtree_count();
             self.check_sanity_subtree(c);
@@ -749,8 +807,7 @@ impl<T: Count + SubtreeCount> Splay<T> {
     pub fn check_sanity(&self)
     where
         T::CountType: Copy,
-        T::SubtreeCountType:
-            fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
+        T::RankType: fmt::Debug + From<T::CountType> + AddAssign + Eq + Copy,
     {
         if let Some(ref root) = self.root {
             self.check_sanity_subtree(root);
@@ -920,7 +977,7 @@ impl<K: Ord, V: BasicOpsWithKey<K>> BasicOps for KeyValue<K, V> {
 }
 impl<K: Ord, V: BasicOpsWithKey<K> + Count> Count for KeyValue<K, V> {
     type CountType = V::CountType;
-    fn cnt(&self) -> &Self::CountType {
+    fn cnt(&self) -> Self::CountType {
         self.value.cnt()
     }
 }
@@ -929,11 +986,9 @@ impl<K: Ord, V: BasicOpsWithKey<K> + CountSub> CountSub for KeyValue<K, V> {
         self.value.cnt_sub(delta)
     }
 }
-impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount> SubtreeCount
-    for KeyValue<K, V>
-{
-    type SubtreeCountType = V::SubtreeCountType;
-    fn subtree_count(&self) -> &Self::SubtreeCountType {
+impl<K: Ord, V: BasicOpsWithKey<K> + Rank> Rank for KeyValue<K, V> {
+    type RankType = V::RankType;
+    fn subtree_count(&self) -> &Self::RankType {
         self.value.subtree_count()
     }
 }
@@ -1381,12 +1436,12 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     }
     pub fn insert_or_inc_cnt(&mut self, key: K)
     where
-        V: CountAdd + Default,
+        V: CountAdd + From<V::CountType>,
         V::CountType: One,
     {
         self.entry(key)
             .and_modify(|_, v| v.cnt_add(&V::CountType::one()))
-            .or_insert(V::default());
+            .or_insert(V::CountType::one().into());
     }
 
     /// Return found or not
@@ -1589,29 +1644,31 @@ impl<K: Ord, V: BasicOpsWithKey<K> + CountSub, C> SplayWithKey<K, V, C> {
         self.splay.deref_root()
     }
 }
-impl<K: Ord, V: BasicOpsWithKey<K> + SubtreeCount, C> SplayWithKey<K, V, C> {
-    pub fn size(&self) -> V::SubtreeCountType
+impl<K: Ord, V: BasicOpsWithKey<K> + Rank, C> SplayWithKey<K, V, C> {
+    pub fn size(&self) -> V::RankType
     where
-        V::SubtreeCountType: Zero + Copy,
+        V::RankType: Zero + Copy,
     {
         self.splay.size()
     }
-    pub fn splay_kth<'a>(&mut self, k: V::SubtreeCountType) -> bool
+    pub fn splay_kth(&mut self, k: V::RankType) -> bool
     where
-        V::SubtreeCountType: Ord + Copy + Zero + Add + SubAssign,
+        V::RankType: Ord + Copy + Zero + Add + SubAssign,
     {
         self.splay.splay_kth(k)
     }
-}
-impl<K: Ord, V: BasicOpsWithKey<K> + Count + SubtreeCount, C>
-    SplayWithKey<K, V, C>
-{
+    pub fn query_kth_key(&mut self, k: V::RankType) -> Option<&K>
+    where
+        V::RankType: Ord + Copy + Zero + Add + SubAssign,
+    {
+        self.splay.query_kth(k).map(|d| &d.key)
+    }
+
     /// Only for DEBUG
     pub fn check_sanity(&self)
     where
         V::CountType: Copy,
-        V::SubtreeCountType:
-            fmt::Debug + From<V::CountType> + AddAssign + Eq + Copy,
+        V::RankType: fmt::Debug + From<V::CountType> + AddAssign + Eq + Copy,
     {
         self.splay.check_sanity()
     }
@@ -1635,108 +1692,164 @@ impl<K: Ord, V: BasicOpsWithKey<K> + Default, C: Compare<K, K> + Default>
         })
     }
 }
-
-// Example
-struct RankTreeValue {
-    cnt: u32,
-    scnt: u32,
+impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K> + Default>
+    From<Vec<(K, V)>> for SplayWithKey<K, V, C>
+{
+    fn from(v: Vec<(K, V)>) -> Self {
+        Self::construct(v, |(key, value)| KeyValue { key, value })
+    }
 }
 
-impl BasicOps for RankTreeValue {
+pub struct CountedRankTreeValue<CountType = u64, RankType = CountType> {
+    cnt: CountType,
+    scnt: RankType,
+}
+
+impl<CountType, RankType> BasicOps for CountedRankTreeValue<CountType, RankType>
+where
+    CountType: Clone,
+    RankType:
+        Clone + From<CountType> + for<'a> core::ops::AddAssign<&'a RankType>,
+{
     fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
-        self.scnt = self.cnt;
+        self.scnt = self.cnt.clone().into();
         if let Some(d) = lc {
-            self.scnt += d.scnt;
+            self.scnt += &d.scnt;
         }
         if let Some(d) = rc {
-            self.scnt += d.scnt;
+            self.scnt += &d.scnt;
         }
     }
 }
 
-impl Default for RankTreeValue {
+impl<CountType, RankType> Default for CountedRankTreeValue<CountType, RankType>
+where
+    CountType: num_traits::One,
+    RankType: num_traits::One,
+{
     fn default() -> Self {
-        RankTreeValue { cnt: 1, scnt: 1 }
+        CountedRankTreeValue {
+            cnt: CountType::one(),
+            scnt: RankType::one(),
+        }
     }
 }
 
-impl Count for RankTreeValue {
-    type CountType = u32;
-    fn cnt(&self) -> &Self::CountType {
-        &self.cnt
+impl<CountType, RankType> Count for CountedRankTreeValue<CountType, RankType>
+where
+    CountType: Clone,
+    RankType:
+        Clone + From<CountType> + for<'a> core::ops::AddAssign<&'a RankType>,
+{
+    type CountType = CountType;
+    fn cnt(&self) -> Self::CountType {
+        self.cnt.clone()
     }
 }
 
-impl CountAdd for RankTreeValue {
+impl<CountType, RankType> CountAdd for CountedRankTreeValue<CountType, RankType>
+where
+    CountType: Clone + for<'a> AddAssign<&'a CountType>,
+    RankType:
+        Clone + From<CountType> + for<'a> core::ops::AddAssign<&'a RankType>,
+{
     fn cnt_add(&mut self, delta: &Self::CountType) {
         self.cnt += delta;
     }
 }
 
-impl SubtreeCount for RankTreeValue {
-    type SubtreeCountType = u32;
-    fn subtree_count(&self) -> &Self::SubtreeCountType {
+impl<CountType, RankType> Rank for CountedRankTreeValue<CountType, RankType>
+where
+    CountType: Clone,
+    RankType:
+        Clone + From<CountType> + for<'a> core::ops::AddAssign<&'a RankType>,
+{
+    type RankType = RankType;
+    fn subtree_count(&self) -> &Self::RankType {
         &self.scnt
+    }
+}
+
+impl<CountType, RankType> From<CountType>
+    for CountedRankTreeValue<CountType, RankType>
+where
+    CountType: Clone,
+    RankType: From<CountType>,
+{
+    fn from(cnt: CountType) -> Self {
+        Self {
+            cnt: cnt.clone(),
+            scnt: cnt.into(),
+        }
     }
 }
 
 #[cfg(feature = "std")]
 fn ranktree_data_to_string<K: Ord + Display>(
-    data: &KeyValue<K, RankTreeValue>,
+    data: &KeyValue<K, CountedRankTreeValue>,
 ) -> String {
     format!("{}*{}", data.key, data.value.cnt)
 }
 
-pub struct RankTree<K: Ord> {
-    rep: SplayWithKey<K, RankTreeValue>,
-}
-
-impl<K: Ord> RankTree<K> {
-    pub fn new() -> RankTree<K> {
-        RankTree {
-            rep: SplayWithKey::new(),
-        }
-    }
-}
-
-impl<K: Ord> RankTree<K> {
-    pub fn size(&self) -> u32 {
-        self.rep.size()
-    }
-    pub fn root_key(&self) -> Option<&K> {
-        self.rep.root_data().map(|d| &d.key)
-    }
-    pub fn insert(&mut self, key: K) {
-        self.rep.insert_or_inc_cnt(key);
-    }
-    pub fn splay(&mut self, key: &K) -> bool {
-        self.rep.splay(key)
-    }
-    pub fn splay_first_le(&mut self, key: &K) -> bool {
-        self.rep.splay_first_le(key)
-    }
-    pub fn splay_first_ge(&mut self, key: &K) -> bool {
-        self.rep.splay_first_ge(key)
-    }
-    // The remaining smallest will be the root.
-    pub fn del_smaller(&mut self, key: &K) {
-        self.rep.del_smaller(key)
-    }
-    pub fn query_kth(&mut self, k: u32) -> Option<&K> {
-        if self.rep.splay_kth(k) {
-            self.root_key()
-        } else {
-            None
-        }
-    }
-    pub fn check_sanity(&self) {
-        self.rep.check_sanity()
-    }
-}
+pub type CountedRankTreeWithKey<K, CountType = u64, RankType = CountType> =
+    SplayWithKey<K, CountedRankTreeValue<CountType, RankType>>;
 
 #[cfg(feature = "std")]
-impl<K: Ord + std::fmt::Display> RankTree<K> {
+impl<K: Ord + Display> CountedRankTreeWithKey<K> {
     pub fn print_tree(&self) {
-        self.rep.print_tree_with(ranktree_data_to_string);
+        self.print_tree_with(ranktree_data_to_string);
     }
 }
+
+#[derive(Debug)]
+pub struct RankTreeValue<V, RankType = usize> {
+    pub value: V,
+    scnt: RankType,
+}
+impl<V, RankType> BasicOps for RankTreeValue<V, RankType>
+where
+    RankType: num_traits::One + for<'a> AddAssign<&'a RankType>,
+{
+    fn push_up(&mut self, lc: Option<&Self>, rc: Option<&Self>) {
+        self.scnt = RankType::one();
+        if let Some(d) = lc {
+            self.scnt += &d.scnt;
+        }
+        if let Some(d) = rc {
+            self.scnt += &d.scnt;
+        }
+    }
+}
+impl<V, RankType> Count for RankTreeValue<V, RankType>
+where
+    RankType: num_traits::One + for<'a> AddAssign<&'a RankType>,
+{
+    type CountType = RankType;
+    fn cnt(&self) -> Self::CountType {
+        RankType::one()
+    }
+}
+// Doesn't support CountAdd and CountSub because we don't store count.
+impl<V, RankType> Rank for RankTreeValue<V, RankType>
+where
+    RankType: num_traits::One + for<'a> AddAssign<&'a RankType>,
+{
+    type RankType = RankType;
+    fn subtree_count(&self) -> &Self::RankType {
+        &self.scnt
+    }
+}
+
+impl<V, RankType> From<V> for RankTreeValue<V, RankType>
+where
+    RankType: num_traits::One,
+{
+    fn from(value: V) -> Self {
+        Self {
+            value,
+            scnt: RankType::one(),
+        }
+    }
+}
+
+pub type RankTree<V, RankType = usize> = Splay<RankTreeValue<V, RankType>>;
