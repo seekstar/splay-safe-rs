@@ -26,7 +26,6 @@ mod basic {
     #[test]
     fn range_delete() {
         let mut splay = RankTreeWithKey::<u32>::from(vec![1, 2, 3]);
-        splay.print_tree();
         assert_eq!(
             splay
                 .range(1..2)
@@ -36,7 +35,6 @@ mod basic {
                 .collect::<Vec<_>>(),
             vec![1]
         );
-        splay.print_tree();
         assert_eq!(splay.size(), 2);
     }
 }

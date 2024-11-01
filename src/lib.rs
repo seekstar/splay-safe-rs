@@ -8,44 +8,54 @@
 //!
 //! # Examples
 //!
+//! ## SplayWithKey
+//!
 //! ```
 //! use splay_safe_rs::{BasicOpsWithKey, KeyValue, SplayWithKey};
 //! use std::ops::Bound;
 //!
 //! struct SplayValue {
-//!     vlen: usize,
-//!     kvsize: usize,
+//!     num: usize,
+//!     total: usize,
 //! }
-//! impl BasicOpsWithKey<String> for SplayValue {
+//! impl BasicOpsWithKey<u32> for SplayValue {
 //!     fn push_up(
 //!         &mut self,
-//!         key: &String,
-//!         lc: Option<&KeyValue<String, Self>>,
-//!         rc: Option<&KeyValue<String, Self>>,
+//!         key: &u32,
+//!         lc: Option<&KeyValue<u32, Self>>,
+//!         rc: Option<&KeyValue<u32, Self>>,
 //!     ) {
-//!         self.kvsize = key.len() + self.vlen;
+//!         self.total = self.num;
 //!         if let Some(d) = lc {
-//!             self.kvsize += d.value.kvsize;
+//!             self.total += d.value.total;
 //!         }
 //!         if let Some(d) = rc {
-//!             self.kvsize += d.value.kvsize;
+//!             self.total += d.value.total;
 //!         }
 //!     }
 //! }
 //!
-//! let mut keys = SplayWithKey::<String, SplayValue>::new();
-//! keys.insert("aa".to_owned(), SplayValue { vlen: 1, kvsize: 3 });
-//! keys.insert("bb".to_owned(), SplayValue { vlen: 2, kvsize: 4 });
-//! keys.insert("cc".to_owned(), SplayValue { vlen: 3, kvsize: 5 });
-//! keys.insert("dd".to_owned(), SplayValue { vlen: 4, kvsize: 6 });
+//! let mut keys = SplayWithKey::<u32, SplayValue>::new();
+//! keys.insert(1, SplayValue { num: 1, total: 1 });
+//! keys.insert(2, SplayValue { num: 2, total: 2 });
+//! keys.insert(3, SplayValue { num: 3, total: 3 });
+//! keys.insert(4, SplayValue { num: 4, total: 4 });
+//! assert_eq!(keys.range(2..4).root_data().unwrap().value.total, 5);
+//! ```
+//!
+//! ## RankTreeWithKey
+//!
+//! ```
+//! use splay_safe_rs::RankTreeWithKey;
+//!
+//! let mut tree = RankTreeWithKey::<u32>::from(vec![1, 2, 3, 4, 5, 6, 7]);
+//! assert_eq!(*tree.query_kth_key(4).unwrap(), 4);
+//! tree.range(4..6).delete_all();
 //! assert_eq!(
-//!     keys.range::<str, _>((Bound::Included("bb"), Bound::Included("cc")))
-//!         .root_data()
-//!         .unwrap()
-//!         .value
-//!         .kvsize,
-//!     9
+//!     tree.collect_data().iter().map(|d| d.key).collect::<Vec<_>>(),
+//!     vec![1, 2, 3, 6, 7],
 //! );
+//! assert_eq!(*tree.query_kth_key(4).unwrap(), 6);
 //! ```
 
 #![cfg_attr(not(test), no_std)]
@@ -301,6 +311,9 @@ impl<'a, T: BasicOps> Subtree<'a, T> {
         let mut elems = Vec::new();
         take_subtree_data(self.rt.take(), &mut elems);
         elems
+    }
+    pub fn delete_all(self) {
+        self.rt.take();
     }
     fn root_data_mut(self) -> Option<DataMutRef<'a, T>> {
         Some(self.rt.as_mut()?.deref_mut().into())
@@ -1046,6 +1059,9 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
     }
     pub fn take_all_data(mut self) -> Vec<KeyValue<K, V>> {
         self.subtree().take_all_data()
+    }
+    pub fn delete_all(mut self) {
+        self.subtree().delete_all();
     }
 
     /// # Arguments
