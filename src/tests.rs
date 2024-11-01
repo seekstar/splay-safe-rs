@@ -20,6 +20,28 @@ mod common {
 }
 
 #[cfg(test)]
+mod basic {
+    use crate::RankTreeWithKey;
+
+    #[test]
+    fn range_delete() {
+        let mut splay = RankTreeWithKey::<u32>::from(vec![1, 2, 3]);
+        splay.print_tree();
+        assert_eq!(
+            splay
+                .range(1..2)
+                .take_all_data()
+                .into_iter()
+                .map(|kv| kv.key)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        splay.print_tree();
+        assert_eq!(splay.size(), 2);
+    }
+}
+
+#[cfg(test)]
 mod rand_with_key {
     use rand::distributions::{Distribution, Uniform};
     use rand::rngs::StdRng;
@@ -625,8 +647,10 @@ mod online_judge {
         // Additional
         let mut range = splay.range((Included(6), Included(6)));
         assert!(range.collect_data().is_empty());
+        drop(range);
         let mut range = splay.range((Included(0), Included(0)));
         assert!(range.collect_data().is_empty());
+        drop(range);
         let range = splay.range((Included(2), Included(2)));
         assert_eq!(
             range
@@ -683,7 +707,9 @@ mod online_judge {
             splay: &mut CountedRankTreeWithKey<u8, u8>,
             x: u8,
         ) -> u8 {
-            match splay.to_range().lt(&x).root_data() {
+            let mut range = splay.to_range();
+            range.lt(&x);
+            match range.root_data() {
                 Some(d) => d.value.scnt,
                 None => 0,
             }

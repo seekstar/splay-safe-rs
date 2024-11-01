@@ -275,32 +275,24 @@ impl<'a, T: BasicOps> Drop for DataMutRef<'a, T> {
     }
 }
 
-pub struct Range<'a, T> {
-    rt: &'a mut Option<Box<Node<T>>>,
-}
-
-impl<'a, T> Range<'a, T> {
-    fn new(rt: &'a mut Option<Box<Node<T>>>) -> Self {
-        Range { rt }
-    }
-}
-
 enum Direction {
     Left,
     Stop,
     Right,
 }
-impl<'a, T: BasicOps> Range<'a, T> {
-    // Not tested by OJ
-    pub fn delete(&mut self) {
-        self.rt.take();
+
+pub struct Subtree<'a, T> {
+    rt: &'a mut Option<Box<Node<T>>>,
+}
+impl<'a, T> Subtree<'a, T> {
+    fn new(rt: &'a mut Option<Box<Node<T>>>) -> Self {
+        Subtree { rt }
     }
-    fn root_data(&self) -> Option<&T> {
-        self.rt.as_ref().map(|rt| &rt.d)
-    }
-    pub fn collect_data(&mut self) -> Vec<&T> {
+}
+impl<'a, T: BasicOps> Subtree<'a, T> {
+    pub fn collect_data(self) -> Vec<&'a T> {
         let mut elems = Vec::new();
-        collect_subtree_data(&mut self.rt, &mut elems);
+        collect_subtree_data(self.rt, &mut elems);
         elems
     }
     pub fn take_all_data(self) -> Vec<T> {
@@ -308,7 +300,7 @@ impl<'a, T: BasicOps> Range<'a, T> {
         take_subtree_data(self.rt.take(), &mut elems);
         elems
     }
-    fn root_data_mut(&mut self) -> Option<DataMutRef<T>> {
+    fn root_data_mut(self) -> Option<DataMutRef<'a, T>> {
         Some(self.rt.as_mut()?.deref_mut().into())
     }
     fn __rotate_to_root(
@@ -335,7 +327,6 @@ impl<'a, T: BasicOps> Range<'a, T> {
         x.push_down();
         self.__rotate_to_root(x, path);
     }
-    // The root is at depth 1
     // ans_depth == 0 means no ans, and the last node in path is rotated to
     // root.
     fn rotate_ans_to_root(
@@ -487,8 +478,8 @@ where
 }
 
 impl<T: BasicOps> Splay<T> {
-    pub fn to_range(&mut self) -> Range<T> {
-        Range::new(&mut self.root)
+    pub fn to_range(&mut self) -> Subtree<T> {
+        Subtree::new(&mut self.root)
     }
     fn __rotate_to_root(
         &mut self,
@@ -656,7 +647,7 @@ impl<T: CountSub> Splay<T> {
     }
 }
 
-impl<'a, T: Rank> Range<'a, T> {
+impl<'a, T: Rank> Subtree<'a, T> {
     /// If T implements Count, then Count::cnt() should always return 1.
     /// We can't enforce this with the compiler because currently we can't
     /// define a trait CountIsOne : Count and override the "cnt" method of
@@ -999,36 +990,39 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>> DerefMut for ValueMutRef<'a, K, V> {
 }
 
 pub struct KeyRange<'a, K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
-    range: Range<'a, KeyValue<K, V>>,
+    path: Vec<(Box<Node<KeyValue<K, V>>>, bool)>,
+    rt: Option<Box<Node<KeyValue<K, V>>>>,
     comparator: &'a C,
+
+    // Used to set the root of the splay when dropping
+    splay_root: &'a mut Option<Box<Node<KeyValue<K, V>>>>,
 }
 impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
-    fn new(
-        rt: &'a mut Option<Box<Node<KeyValue<K, V>>>>,
-        comparator: &'a C,
-    ) -> Self {
-        KeyRange {
-            range: Range::new(rt),
-            comparator,
-        }
+    fn subtree<'b>(&'b mut self) -> Subtree<'b, KeyValue<K, V>> {
+        Subtree::new(&mut self.rt)
     }
     pub fn root_data(&self) -> Option<&KeyValue<K, V>> {
-        self.range.root_data()
+        self.rt.as_ref().map(|node| &node.d)
     }
     pub fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
-        self.range.root_data_mut().map(|d| d.into())
+        self.subtree().root_data_mut().map(|d| d.into())
     }
-    pub fn collect_data(&mut self) -> Vec<&KeyValue<K, V>> {
-        self.range.collect_data()
+    pub fn collect_data<'b>(&'b mut self) -> Vec<&'b KeyValue<K, V>> {
+        self.subtree().collect_data()
     }
-    pub fn take_all_data(self) -> Vec<KeyValue<K, V>> {
-        self.range.take_all_data()
+    pub fn take_all_data(mut self) -> Vec<KeyValue<K, V>> {
+        self.subtree().take_all_data()
     }
 
     /// # Arguments
     /// * ge
-    /// 	- false: Find the first node whose value <= key.
-    /// 	- true: Find the first node whose value >= key.
+    /// 	- false: Find the first node whose key <= "key".
+    /// 	- true: Find the first node whose key >= "key".
+    /// # Return value
+    /// 1. The path to the key.
+    /// 2. The depth (counted from 1) of the last node in the path that <= "key" or >= "key".
+    /// This should be the first node in the tree whose key <= "key" or >= "key".
+    /// If zero is returned, then there is no such a node.
     fn path_to_first_le_or_ge<E>(
         &mut self,
         key: &E,
@@ -1038,7 +1032,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         C: Compare<K, E>,
         E: ?Sized,
     {
-        let mut next = self.range.rt.take();
+        let mut next = self.rt.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
         while let Some(mut cur) = next {
@@ -1065,7 +1059,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         E: ?Sized,
     {
         let (path, ans_depth) = self.path_to_first_le_or_ge(key, ge);
-        self.range.rotate_ans_to_root(path, ans_depth)
+        self.subtree().rotate_ans_to_root(path, ans_depth)
     }
     fn splay_first_le<E>(&mut self, key: &E) -> bool
     where
@@ -1090,7 +1084,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         C: Compare<K, E>,
         E: ?Sized,
     {
-        let mut next = self.range.rt.take();
+        let mut next = self.rt.take();
         let mut path = Vec::new();
         let mut ans_depth = 0;
         let go_right = if GT { C::compares_le } else { C::compares_lt };
@@ -1111,7 +1105,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
     {
         let (path, ans_depth) =
             self.path_to_first_less_or_greater::<E, GT>(key);
-        self.range.rotate_ans_to_root(path, ans_depth)
+        self.subtree().rotate_ans_to_root(path, ans_depth)
     }
     fn splay_first_lt<E>(&mut self, key: &E) -> bool
     where
@@ -1128,27 +1122,29 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         self.splay_first_lt_or_gt::<E, true>(key)
     }
 
-    fn lt_or_gt<E>(mut self, key: &E, gt: bool) -> Self
+    fn make_child_root(&mut self, side: bool) {
+        let mut rt = self.rt.take().unwrap();
+        let new_rt = rt.take_child(side);
+        self.path.push((rt, side));
+        self.rt = new_rt;
+    }
+    fn lt_or_gt<E>(&mut self, key: &E, gt: bool)
     where
         C: Compare<K, E>,
         E: ?Sized,
     {
-        let found = self.splay_first_le_or_ge(key, !gt);
-        if found {
-            let rt = self.range.rt.as_mut().unwrap();
-            KeyRange::new(&mut rt.c[gt as usize], self.comparator)
-        } else {
-            self
+        if self.splay_first_le_or_ge(key, !gt) {
+            self.make_child_root(gt);
         }
     }
-    pub fn lt<E>(self, key: &E) -> Self
+    pub fn lt<E>(&mut self, key: &E)
     where
         C: Compare<K, E>,
         E: ?Sized,
     {
         self.lt_or_gt(key, false)
     }
-    fn gt<E>(self, key: &E) -> Self
+    fn gt<E>(&mut self, key: &E)
     where
         C: Compare<K, E>,
         E: ?Sized,
@@ -1156,7 +1152,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         self.lt_or_gt(key, true)
     }
 
-    fn le_or_ge<E, const GE: bool>(mut self, key: &E) -> Self
+    fn le_or_ge<E, const GE: bool>(&mut self, key: &E)
     where
         C: Compare<K, E>,
         E: ?Sized,
@@ -1167,25 +1163,40 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
             self.splay_first_gt(key)
         };
         if found {
-            let rt = self.range.rt.as_mut().unwrap();
-            Self::new(&mut rt.c[GE as usize], &self.comparator)
-        } else {
-            self
+            self.make_child_root(GE);
         }
     }
-    fn le<E>(self, key: &E) -> Self
+    fn le<E>(&mut self, key: &E)
     where
         C: Compare<K, E>,
         E: ?Sized,
     {
         self.le_or_ge::<E, false>(key)
     }
-    fn ge<E>(self, key: &E) -> Self
+    fn ge<E>(&mut self, key: &E)
     where
         C: Compare<K, E>,
         E: ?Sized,
     {
         self.le_or_ge::<E, true>(key)
+    }
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> Drop for KeyRange<'a, K, V, C> {
+    fn drop(&mut self) {
+        if self.path.is_empty() {
+            // fast path
+            *self.splay_root = self.rt.take();
+            return;
+        }
+        let new_root;
+        if let Some(rt) = self.rt.take() {
+            new_root = rt;
+        } else {
+            new_root = self.path.pop().unwrap().0;
+        }
+        let mut path = Vec::new();
+        std::mem::swap(&mut path, &mut self.path);
+        Subtree::new(self.splay_root).rotate_to_root(new_root, path);
     }
 }
 
@@ -1343,8 +1354,10 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
 
     fn to_range(&mut self) -> KeyRange<K, V, C> {
         KeyRange {
-            range: self.splay.to_range(),
+            path: Vec::new(),
+            rt: self.splay.root.take(),
             comparator: &self.comparator,
+            splay_root: &mut self.splay.root,
         }
     }
 
@@ -1568,13 +1581,13 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
     {
         let mut ans = self.to_range();
         match range.start_bound() {
-            Bound::Included(key) => ans = ans.ge(key),
-            Bound::Excluded(key) => ans = ans.gt(key),
+            Bound::Included(key) => ans.ge(key),
+            Bound::Excluded(key) => ans.gt(key),
             Bound::Unbounded => {}
         }
         match range.end_bound() {
-            Bound::Included(key) => ans = ans.le(key),
-            Bound::Excluded(key) => ans = ans.lt(key),
+            Bound::Included(key) => ans.le(key),
+            Bound::Excluded(key) => ans.lt(key),
             Bound::Unbounded => {}
         }
         ans
@@ -1738,20 +1751,17 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-fn ranktree_data_to_string<K: Ord + Display>(
-    data: &KeyValue<K, CountedRankTreeValue>,
-) -> String {
-    format!("{}*{}", data.key, data.value.cnt)
-}
-
-pub type CountedRankTreeWithKey<K, CountType = u64, RankType = CountType> =
-    SplayWithKey<K, CountedRankTreeValue<CountType, RankType>>;
+pub type CountedRankTreeWithKey<
+    K,
+    CountType = u64,
+    RankType = CountType,
+    C = Natural<K>,
+> = SplayWithKey<K, CountedRankTreeValue<CountType, RankType>, C>;
 
 #[cfg(feature = "std")]
 impl<K: Ord + Display> CountedRankTreeWithKey<K> {
     pub fn print_tree(&self) {
-        self.print_tree_with(ranktree_data_to_string);
+        self.print_tree_with(|data| format!("{}*{}", data.key, data.value.cnt));
     }
 }
 
@@ -1794,6 +1804,19 @@ where
     }
 }
 
+impl<V, RankType> Default for RankTreeValue<V, RankType>
+where
+    V: Default,
+    RankType: num_traits::One,
+{
+    fn default() -> Self {
+        Self {
+            value: V::default(),
+            scnt: RankType::one(),
+        }
+    }
+}
+
 impl<V, RankType> From<V> for RankTreeValue<V, RankType>
 where
     RankType: num_traits::One,
@@ -1807,3 +1830,13 @@ where
 }
 
 pub type RankTree<V, RankType = usize> = Splay<RankTreeValue<V, RankType>>;
+
+pub type RankTreeWithKey<K, V = (), RankType = usize, C = Natural<K>> =
+    SplayWithKey<K, RankTreeValue<V, RankType>, C>;
+
+#[cfg(feature = "std")]
+impl<K: Ord + Display> RankTreeWithKey<K> {
+    pub fn print_tree(&self) {
+        self.print_tree_with(|data| format!("{}", data.key));
+    }
+}
