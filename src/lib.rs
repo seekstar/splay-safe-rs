@@ -474,10 +474,10 @@ fn collect_non_empty_subtree_data<'a, T>(
     T: BasicOps,
 {
     rt.push_down();
-    let (lc, rc) = rt.c.split_at_mut(1);
-    collect_subtree_data(&mut lc[0], elems);
-    elems.push(&rt.d);
-    collect_subtree_data(&mut rc[0], elems);
+    let (lc, rc, d) = rt.members_mut();
+    collect_subtree_data(lc, elems);
+    elems.push(d);
+    collect_subtree_data(rc, elems);
 }
 fn collect_subtree_data<'a, T>(
     rt: &'a mut Option<Box<Node<T>>>,
