@@ -66,7 +66,9 @@ use core::ops::{Add, AddAssign, SubAssign};
 use core::ops::{Bound, RangeBounds};
 use core::ops::{Deref, DerefMut};
 
+#[macro_use]
 extern crate alloc;
+
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -378,6 +380,22 @@ impl<'a, T: BasicOps> Subtree<'a, T> {
             path.push((cur, side));
         }
         Some(path)
+    }
+
+    /// Return found or not
+    fn splay_prev_or_next(&mut self, is_next: bool) -> bool {
+        let mut root = if let Some(root) = self.rt.take() {
+            root
+        } else {
+            return false;
+        };
+        let cur = root.take_child(is_next);
+        let mut path = vec![(root, is_next)];
+        find_smallest_or_largest(cur, !is_next, &mut path);
+        let root = path.pop().unwrap().0;
+        let found = !path.is_empty();
+        self.rotate_to_root(root, path);
+        found
     }
 }
 
@@ -989,6 +1007,22 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>> DerefMut for ValueMutRef<'a, K, V> {
     }
 }
 
+pub struct KeyValueMutRef<'a, K: Ord, V: BasicOpsWithKey<K>> {
+    d: DataMutRef<'a, KeyValue<K, V>>,
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>> KeyValueMutRef<'a, K, V> {
+    pub fn key_value(&mut self) -> (&K, &mut V) {
+        (&self.d.node.d.key, &mut self.d.node.d.value)
+    }
+}
+impl<'a, K: Ord, V: BasicOpsWithKey<K>> From<DataMutRef<'a, KeyValue<K, V>>>
+    for KeyValueMutRef<'a, K, V>
+{
+    fn from(data: DataMutRef<'a, KeyValue<K, V>>) -> Self {
+        Self { d: data }
+    }
+}
+
 pub struct KeyRange<'a, K: Ord, V: BasicOpsWithKey<K> = (), C = Natural<K>> {
     path: Vec<(Box<Node<KeyValue<K, V>>>, bool)>,
     rt: Option<Box<Node<KeyValue<K, V>>>>,
@@ -1122,12 +1156,26 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> KeyRange<'a, K, V, C> {
         self.splay_first_lt_or_gt::<E, true>(key)
     }
 
+    fn splay_prev_or_next(&mut self, is_next: bool) -> bool {
+        self.subtree().splay_prev_or_next(is_next)
+    }
+    pub fn splay_next(&mut self) -> bool {
+        self.splay_prev_or_next(true)
+    }
+
     fn make_child_root(&mut self, side: bool) {
         let mut rt = self.rt.take().unwrap();
         let new_rt = rt.take_child(side);
         self.path.push((rt, side));
         self.rt = new_rt;
     }
+    pub fn enter_left_subtree(&mut self) {
+        self.make_child_root(false);
+    }
+    pub fn enter_right_subtree(&mut self) {
+        self.make_child_root(true);
+    }
+
     fn lt_or_gt<E>(&mut self, key: &E, gt: bool)
     where
         C: Compare<K, E>,
@@ -1339,6 +1387,9 @@ impl<K: Ord, V: BasicOpsWithKey<K>, C: Compare<K, K>> SplayWithKey<K, V, C> {
         self.splay.root_data()
     }
     fn root_value_mut(&mut self) -> Option<ValueMutRef<K, V>> {
+        self.splay.root_data_mut().map(|d| d.into())
+    }
+    pub fn root_key_value_mut(&mut self) -> Option<KeyValueMutRef<K, V>> {
         self.splay.root_data_mut().map(|d| d.into())
     }
     pub fn pop_smallest(&mut self) -> Option<KeyValue<K, V>> {
