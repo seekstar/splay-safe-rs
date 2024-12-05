@@ -467,26 +467,27 @@ impl<E, T: BasicOps + From<E>> From<Vec<E>> for Splay<T> {
     }
 }
 
-fn collect_non_empty_subtree_data<'a, T>(
-    rt: &'a mut Box<Node<T>>,
-    elems: &mut Vec<&'a T>,
-) where
-    T: BasicOps,
-{
-    rt.push_down();
-    let (lc, rc, d) = rt.members_mut();
-    collect_subtree_data(lc, elems);
-    elems.push(d);
-    collect_subtree_data(rc, elems);
-}
 fn collect_subtree_data<'a, T>(
     rt: &'a mut Option<Box<Node<T>>>,
     elems: &mut Vec<&'a T>,
 ) where
     T: BasicOps,
 {
-    if let Some(rt) = rt {
-        collect_non_empty_subtree_data(rt, elems);
+    let mut stack = Vec::new();
+    let mut cur = rt;
+    loop {
+        while let Some(node) = cur {
+            node.push_down();
+            let (lc, rc, d) = node.members_mut();
+            stack.push((d, rc));
+            cur = lc;
+        }
+        cur = if let Some((d, rc)) = stack.pop() {
+            elems.push(d);
+            rc
+        } else {
+            break;
+        };
     }
 }
 
