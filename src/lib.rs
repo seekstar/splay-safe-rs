@@ -491,21 +491,24 @@ fn collect_subtree_data<'a, T>(
     }
 }
 
-fn take_non_empty_subtree_data<T>(mut rt: Box<Node<T>>, elems: &mut Vec<T>)
-where
-    T: BasicOps,
-{
-    rt.push_down();
-    take_subtree_data(rt.c[0].take(), elems);
-    elems.push(rt.d);
-    take_subtree_data(rt.c[1].take(), elems);
-}
 fn take_subtree_data<T>(rt: Option<Box<Node<T>>>, elems: &mut Vec<T>)
 where
     T: BasicOps,
 {
-    if let Some(rt) = rt {
-        take_non_empty_subtree_data(rt, elems);
+    let mut stack = Vec::new();
+    let mut cur = rt;
+    loop {
+        while let Some(mut node) = cur {
+            node.push_down();
+            cur = node.c[0].take();
+            stack.push(node);
+        }
+        cur = if let Some(mut node) = stack.pop() {
+            elems.push(node.d);
+            node.c[1].take()
+        } else {
+            break;
+        }
     }
 }
 
