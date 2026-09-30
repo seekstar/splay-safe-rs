@@ -1263,7 +1263,7 @@ impl<'a, K: Ord, V: BasicOpsWithKey<K>, C> Drop for KeyRange<'a, K, V, C> {
             new_root = self.path.pop().unwrap().0;
         }
         let mut path = Vec::new();
-        std::mem::swap(&mut path, &mut self.path);
+        core::mem::swap(&mut path, &mut self.path);
         Subtree::new(self.splay_root).rotate_to_root(new_root, path);
     }
 }
